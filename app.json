@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Test Opos Enfermeria",
+    "slug": "test-opos-enfermeria",
+    "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "orientation": "portrait",
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.gorka.oposenfermeria",
+      "versionCode": 1
+    }
+  }
+}
