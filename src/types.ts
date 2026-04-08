@@ -3,10 +3,8 @@ export type Question = {
   question: string;
   options: string[];
   correctIndex: number;
-  explanation?: string;
+  source?: string;
 };
-
-export type QuizMode = "random" | "failed";
 
 export type AppStats = {
   totalAnswered: number;
@@ -14,4 +12,20 @@ export type AppStats = {
   examsCompleted: number;
   practiceAnswered: number;
   practiceCorrect: number;
+  lastExamDate?: number;
+  sessionHistory?: SessionRecord[];
+};
+
+export type SessionRecord = {
+  date: number;
+  score: number;
+  total: number;
+  accuracy: number;
+};
+
+export type QuestionStat = {
+  id: string;
+  timesShown: number;
+  timesCorrect: number;
+  timesFailed: number;
 };

@@ -12,10 +12,22 @@
       "ios",
       "web"
     ],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#f4f9ff"
+    },
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.gorka.oposenfermeria",
-      "versionCode": 1
-    }
+      "versionCode": 3
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e625e645-705a-4783-9739-a96598a7d7a6"
+      }
+    },
+    "plugins": [
+      "expo-sharing"
+    ]
   }
 }

@@ -1,16 +1,25 @@
+import "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, SafeAreaView, Text } from "react-native";
+import * as Haptics from "expo-haptics";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Text } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { FontScaleContext } from "./src/context/FontScaleContext";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ExamResultScreen } from "./src/components/screens/ExamResultScreen";
 import { ExamScreen } from "./src/components/screens/ExamScreen";
 import { HomeScreen } from "./src/components/screens/HomeScreen";
+import { OptionsScreen } from "./src/components/screens/OptionsScreen";
 import { PracticeScreen } from "./src/components/screens/PracticeScreen";
+import { QuestionListScreen } from "./src/components/screens/QuestionListScreen";
 import { StatsScreen } from "./src/components/screens/StatsScreen";
 import { DEFAULT_EXAM_QUESTIONS, EMPTY_STATS } from "./src/constants/app";
 import { QUESTION_POOL } from "./src/data/questions";
 import { styles } from "./src/styles/appStyles";
-import { AppStats, Question } from "./src/types";
-import { shuffleArray } from "./src/utils/shuffle";
+import { AppStats, Question, QuestionStat } from "./src/types";
+import { pickSemiRandomQuestions, shuffleArray } from "./src/utils/shuffle";
 import {
   buildExamStats,
   buildPracticeStats,
@@ -25,41 +34,103 @@ import {
   getStats,
   saveFailedQuestionIds,
   saveStats,
+  getFavoriteQuestionIds,
+  toggleFavorite,
+  getAllQuestionStats,
+  recordQuestionAnswered,
+  getDisabledQuestionIds,
+  saveDisabledQuestionIds,
+  saveAllQuestionStats,
+  getFontScale,
+  saveFontScale,
 } from "./src/utils/storage";
+import { buildRecordedExamSessionStats } from "./src/utils/sessionHistory";
 
-type ScreenState = "home" | "exam" | "examResult" | "practice" | "stats";
-type PracticeMode = "random-list" | "failed-list";
+type PracticeMode = "random-list" | "failed-list" | "favorites" | "hard-list";
+type RootStackParamList = {
+  home: undefined;
+  options: undefined;
+  stats: undefined;
+  questionList: undefined;
+  exam: undefined;
+  examResult: undefined;
+  practice: undefined;
+};
 
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/**
+ * App root orchestrator.
+ *
+ * Responsibilities:
+ * - Load persisted state (stats, failures, favorites, question counters, settings).
+ * - Keep session state for current exam/practice run.
+ * - Apply business rules when answering/finishing sessions.
+ * - Wire navigation routes to screen components.
+ */
 export default function App() {
-  const [screen, setScreen] = useState<ScreenState>("home");
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+
+  // Persisted datasets
   const [loading, setLoading] = useState(true);
   const [failedIds, setFailedIds] = useState<string[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [disabledIds, setDisabledIds] = useState<string[]>([]);
+  const [questionStats, setQuestionStats] = useState<Record<string, QuestionStat>>({});
   const [stats, setStats] = useState<AppStats>(EMPTY_STATS);
+
+  // Session/runtime state
   const [examCountInput, setExamCountInput] = useState(String(DEFAULT_EXAM_QUESTIONS));
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
   const [practiceMode, setPracticeMode] = useState<PracticeMode>("random-list");
-  const [practiceSelected, setPracticeSelected] = useState<number | null>(null);
+  const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
+  const [lastExamQuestions, setLastExamQuestions] = useState<Question[]>([]);
+  const [fontScale, setFontScale] = useState(1);
+  const [hardMaxAccuracy, setHardMaxAccuracy] = useState(50);
+  const [hardMinShown, setHardMinShown] = useState(2);
 
+  // Initial hydration from local storage.
   useEffect(() => {
     (async () => {
-      const [ids, loadedStats] = await Promise.all([getFailedQuestionIds(), getStats()]);
-      setFailedIds(ids);
-      setStats(loadedStats);
-      setLoading(false);
+      try {
+        const [ids, loadedStats, favs, qStats, disIds, loadedFontScale] = await Promise.all([
+          getFailedQuestionIds(),
+          getStats(),
+          getFavoriteQuestionIds(),
+          getAllQuestionStats(),
+          getDisabledQuestionIds(),
+          getFontScale(),
+        ]);
+        setFailedIds(ids);
+        setStats(loadedStats);
+        setFavoriteIds(favs);
+        setQuestionStats(qStats);
+        setDisabledIds(disIds);
+        setFontScale(loadedFontScale);
+      } catch (error) {
+        // Keep app usable even if persistence init fails on some devices.
+        console.error("Startup hydration failed", error);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
+  async function updateFontScale(scale: number) {
+    setFontScale(scale);
+    await saveFontScale(scale);
+  }
+
   const currentQuestion = questions[currentIndex];
   const score = useMemo(() => calculateScore(questions, answers), [answers, questions]);
+  const practiceSelected = currentQuestion ? practiceAnswers[currentQuestion.id] ?? null : null;
   const practiceAnswered = practiceSelected !== null;
-  const practiceIsCorrect =
-    currentQuestion && practiceSelected !== null
-      ? practiceSelected === currentQuestion.correctIndex
-      : false;
 
   async function persistStats(nextStats: AppStats) {
+    // Keep UI state and storage fully synchronized.
     setStats(nextStats);
     await saveStats(nextStats);
   }
@@ -68,38 +139,111 @@ export default function App() {
     setQuestions([]);
     setCurrentIndex(0);
     setAnswers({});
-    setPracticeSelected(null);
+    setPracticeAnswers({});
+    setAnsweredQuestions(new Set());
   }
 
-  function goHome() {
-    setScreen("home");
+  function goHome(navigation?: {
+    reset?: (state: { index: number; routes: { name: keyof RootStackParamList }[] }) => void;
+    popToTop?: () => void;
+    navigate?: (screen: keyof RootStackParamList) => void;
+  }) {
     resetSession();
-  }
 
-  function startExam() {
-    const count = clampQuestionCount(examCountInput, QUESTION_POOL.length);
-    setExamCountInput(String(count));
-    setQuestions(shuffleArray(QUESTION_POOL).slice(0, count));
-    setCurrentIndex(0);
-    setAnswers({});
-    setScreen("exam");
-  }
-
-  function startPractice(mode: PracticeMode) {
-    const baseQuestions =
-      mode === "failed-list"
-        ? QUESTION_POOL.filter((question) => failedIds.includes(question.id))
-        : QUESTION_POOL;
-
-    if (!baseQuestions.length) {
+    if (navigation?.reset) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "home" }],
+      });
       return;
     }
 
-    setPracticeMode(mode);
-    setQuestions(shuffleArray(baseQuestions));
+    if (navigation?.popToTop) {
+      navigation.popToTop();
+      navigation.navigate?.("home");
+      return;
+    }
+
+    if (navigationRef.isReady()) {
+      navigationRef.resetRoot({
+        index: 0,
+        routes: [{ name: "home" }],
+      });
+    }
+  }
+
+  function startExam() {
+    // Exam is always created from enabled questions only.
+    const enabled = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+    const count = clampQuestionCount(examCountInput, enabled.length);
+    setExamCountInput(String(count));
+    const selected = pickSemiRandomQuestions(enabled, count, questionStats, failedIds);
+    setQuestions(selected);
+    setLastExamQuestions(selected);
     setCurrentIndex(0);
-    setPracticeSelected(null);
-    setScreen("practice");
+    setAnswers({});
+    setAnsweredQuestions(new Set());
+  }
+
+  function repeatExam() {
+    if (!lastExamQuestions.length) {
+      startExam();
+      return;
+    }
+
+    const repeated = shuffleArray(lastExamQuestions);
+    setQuestions(repeated);
+    setCurrentIndex(0);
+    setAnswers({});
+    setAnsweredQuestions(new Set());
+  }
+
+  function startAnotherExamSameCount() {
+    // Reuse current exam size to make quick retries convenient.
+    const enabled = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+    const targetCount = questions.length > 0 ? questions.length : clampQuestionCount(examCountInput, enabled.length);
+    setExamCountInput(String(targetCount));
+
+    const selected = pickSemiRandomQuestions(enabled, targetCount, questionStats, failedIds);
+    setQuestions(selected);
+    setLastExamQuestions(selected);
+    setCurrentIndex(0);
+    setAnswers({});
+    setAnsweredQuestions(new Set());
+  }
+
+  // Dynamic difficult IDs based on per-question personal accuracy.
+  const hardIds = Object.entries(questionStats)
+    .filter(([, s]) => s.timesShown >= hardMinShown && s.timesCorrect / s.timesShown < hardMaxAccuracy / 100)
+    .map(([id]) => id);
+
+  function startPractice(mode: PracticeMode): boolean {
+    let baseQuestions: Question[] = [];
+
+    if (mode === "failed-list") {
+      baseQuestions = QUESTION_POOL.filter((question) => failedIds.includes(question.id));
+    } else if (mode === "favorites") {
+      baseQuestions = QUESTION_POOL.filter((question) => favoriteIds.includes(question.id));
+    } else if (mode === "hard-list") {
+      baseQuestions = QUESTION_POOL.filter((question) => hardIds.includes(question.id));
+    } else {
+      baseQuestions = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+    }
+
+    if (!baseQuestions.length) {
+      return false;
+    }
+
+    setPracticeMode(mode);
+    if (mode === "random-list") {
+      setQuestions(pickSemiRandomQuestions(baseQuestions, baseQuestions.length, questionStats, failedIds));
+    } else {
+      setQuestions(shuffleArray(baseQuestions));
+    }
+    setCurrentIndex(0);
+    setPracticeAnswers({});
+    setAnsweredQuestions(new Set());
+    return true;
   }
 
   function answerExam(optionIndex: number) {
@@ -107,26 +251,74 @@ export default function App() {
       return;
     }
 
-    setAnswers((prev: Record<string, number>) => ({ ...prev, [currentQuestion.id]: optionIndex }));
+    setAnswers((prev: Record<string, number>) => ({
+      ...prev,
+      [currentQuestion.id]: optionIndex,
+    }));
+    setAnsweredQuestions((prev) => new Set(prev).add(currentIndex));
+    // Question counters are updated immediately for adaptive features.
+    void recordQuestionAnswered(currentQuestion.id, optionIndex === currentQuestion.correctIndex).then(() =>
+      getAllQuestionStats().then(setQuestionStats)
+    );
   }
 
-  async function finishExam() {
+  async function finishExam(onDone: () => void) {
+    // Important: unanswered exam questions are ignored in mergeFailedQuestionIds
+    // and therefore do not pollute failed list persistence.
+    const answeredCount = answeredQuestions.size;
     const nextFailedIds = mergeFailedQuestionIds(failedIds, questions, answers);
     setFailedIds(nextFailedIds);
     await saveFailedQuestionIds(nextFailedIds);
 
-    const nextStats = buildExamStats(stats, questions.length, score);
-    await persistStats(nextStats);
-    setScreen("examResult");
+    // First update cumulative stats, then append exam session history entry.
+    const nextStats = buildExamStats(stats, answeredCount, score);
+    const nextStatsWithSession = buildRecordedExamSessionStats(nextStats, score, questions.length, answeredCount);
+    await persistStats(nextStatsWithSession);
+    onDone();
   }
 
-  function nextExamQuestion() {
-    if (currentIndex >= questions.length - 1) {
-      void finishExam();
+  function requestFinishExam(onDone: () => void) {
+    const unanswered = questions.length - answeredQuestions.size;
+    if (unanswered > 0) {
+      const message = `Te faltan ${unanswered} pregunta${unanswered !== 1 ? "s" : ""} por responder. ¿Seguro que quieres terminar el examen?`;
+
+      if (Platform.OS === "web" && typeof globalThis.confirm === "function") {
+        if (globalThis.confirm(message)) {
+          void finishExam(onDone);
+        }
+        return;
+      }
+
+      Alert.alert(
+        "Faltan preguntas",
+        message,
+        [
+          { text: "Seguir respondiendo", style: "cancel" },
+          { text: "Terminar igualmente", style: "destructive", onPress: () => void finishExam(onDone) },
+        ]
+      );
       return;
     }
 
-    setCurrentIndex((prev: number) => prev + 1);
+    void finishExam(onDone);
+  }
+
+  function nextExamQuestion() {
+    setCurrentIndex((prev: number) => Math.min(questions.length - 1, prev + 1));
+  }
+
+  function prevExamQuestion() {
+    setCurrentIndex((prev: number) => Math.max(0, prev - 1));
+  }
+
+  async function toggleQuestionFavorite() {
+    if (!currentQuestion) return;
+    const isFav = await toggleFavorite(currentQuestion.id);
+    if (isFav) {
+      setFavoriteIds((prev) => [...prev, currentQuestion.id]);
+    } else {
+      setFavoriteIds((prev) => prev.filter((id) => id !== currentQuestion.id));
+    }
   }
 
   async function answerPractice(optionIndex: number) {
@@ -134,34 +326,53 @@ export default function App() {
       return;
     }
 
-    setPracticeSelected(optionIndex);
+    setPracticeAnswers((prev) => ({
+      ...prev,
+      [currentQuestion.id]: optionIndex,
+    }));
     const isCorrect = optionIndex === currentQuestion.correctIndex;
+    await Haptics.notificationAsync(
+      isCorrect ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error,
+    );
 
+    // Practice mode affects failed list immediately per answered question.
     const nextFailedIds = updateFailedIdsForPractice(failedIds, currentQuestion, isCorrect);
     setFailedIds(nextFailedIds);
     await saveFailedQuestionIds(nextFailedIds);
 
     const nextStats = buildPracticeStats(stats, isCorrect);
     await persistStats(nextStats);
+    await recordQuestionAnswered(currentQuestion.id, isCorrect);
+    const updatedQStats = await getAllQuestionStats();
+    setQuestionStats(updatedQStats);
   }
 
-  function nextPracticeQuestion() {
+  function nextPracticeQuestion(): boolean {
     if (currentIndex >= questions.length - 1) {
-      goHome();
-      return;
+      return false;
     }
 
     setCurrentIndex((prev: number) => prev + 1);
-    setPracticeSelected(null);
+    return true;
+  }
+
+  function prevPracticeQuestion() {
+    if (currentIndex <= 0) {
+      return;
+    }
+
+    setCurrentIndex((prev: number) => prev - 1);
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <StatusBar style="dark" />
-        <ActivityIndicator size="large" color="#1b4965" />
-        <Text style={styles.info}>Cargando estadisticas...</Text>
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.centered}>
+          <StatusBar style="dark" />
+          <ActivityIndicator size="large" color="#1b4965" />
+          <Text style={styles.info}>Cargando estadisticas...</Text>
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -169,67 +380,244 @@ export default function App() {
   const practiceAccuracy = getAccuracy(stats.practiceCorrect, stats.practiceAnswered);
 
   return (
-    <>
-      <StatusBar style="dark" />
+    <SafeAreaProvider>
+      <FontScaleContext.Provider value={fontScale}>
+        <NavigationContainer ref={navigationRef}>
+          <StatusBar style="dark" />
+          <Stack.Navigator initialRouteName="home" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="home">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <HomeScreen
+                  totalQuestions={QUESTION_POOL.length}
+                  failedCount={failedIds.length}
+                  hardCount={hardIds.length}
+                  totalAccuracy={totalAccuracy}
+                  examCountInput={examCountInput}
+                  onExamCountChange={setExamCountInput}
+                  onStartExam={() => {
+                    startExam();
+                    navigation.navigate("exam");
+                  }}
+                  onStartRandomPractice={() => {
+                    if (startPractice("random-list")) {
+                      navigation.navigate("practice");
+                    }
+                  }}
+                  onStartFailedPractice={() => {
+                    if (startPractice("failed-list")) {
+                      navigation.navigate("practice");
+                    }
+                  }}
+                  onStartHardPractice={() => {
+                    if (startPractice("hard-list")) {
+                      navigation.navigate("practice");
+                    }
+                  }}
+                  onOpenStats={() => navigation.navigate("stats")}
+                  onOpenQuestionList={() => navigation.navigate("questionList")}
+                  onOpenOptions={() => navigation.navigate("options")}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
 
-      {screen === "home" && (
-        <HomeScreen
-          totalQuestions={QUESTION_POOL.length}
-          failedCount={failedIds.length}
-          totalAccuracy={totalAccuracy}
-          examCountInput={examCountInput}
-          onExamCountChange={setExamCountInput}
-          onStartExam={startExam}
-          onStartRandomPractice={() => startPractice("random-list")}
-          onStartFailedPractice={() => startPractice("failed-list")}
-          onOpenStats={() => setScreen("stats")}
-        />
-      )}
+          <Stack.Screen name="options">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <OptionsScreen
+                  onGoHome={() => goHome(navigation)}
+                  onFontScaleChange={(scale) => void updateFontScale(scale)}
+                  hardMaxAccuracy={hardMaxAccuracy}
+                  hardMinShown={hardMinShown}
+                  onHardMaxAccuracyChange={setHardMaxAccuracy}
+                  onHardMinShownChange={setHardMinShown}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
 
-      {screen === "stats" && (
-        <StatsScreen
-          stats={stats}
-          totalAccuracy={totalAccuracy}
-          practiceAccuracy={practiceAccuracy}
-          onGoHome={goHome}
-        />
-      )}
+          <Stack.Screen name="stats">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <StatsScreen
+                  stats={stats}
+                  totalAccuracy={totalAccuracy}
+                  practiceAccuracy={practiceAccuracy}
+                  questionStats={questionStats}
+                  totalQuestions={QUESTION_POOL.length}
+                  onResetAllStats={async () => {
+                    setStats(EMPTY_STATS);
+                    await saveStats(EMPTY_STATS);
 
-      {screen === "examResult" && (
-        <ExamResultScreen
-          score={score}
-          totalQuestions={questions.length}
-          onRepeatExam={startExam}
-          onGoHome={goHome}
-        />
-      )}
+                    setFailedIds([]);
+                    await saveFailedQuestionIds([]);
 
-      {screen === "practice" && currentQuestion && (
-        <PracticeScreen
-          question={currentQuestion}
-          currentIndex={currentIndex}
-          totalQuestions={questions.length}
-          practiceMode={practiceMode}
-          practiceSelected={practiceSelected}
-          practiceAnswered={practiceAnswered}
-          practiceIsCorrect={practiceIsCorrect}
-          onAnswer={answerPractice}
-          onNext={nextPracticeQuestion}
-          onGoHome={goHome}
-        />
-      )}
+                    setQuestionStats({});
+                    await saveAllQuestionStats({});
+                  }}
+                  onGoHome={() => goHome(navigation)}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
 
-      {screen === "exam" && currentQuestion && (
-        <ExamScreen
-          question={currentQuestion}
-          currentIndex={currentIndex}
-          totalQuestions={questions.length}
-          selectedAnswer={answers[currentQuestion.id]}
-          onAnswer={answerExam}
-          onNext={nextExamQuestion}
-          onGoHome={goHome}
-        />
-      )}
-    </>
+          <Stack.Screen name="questionList">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <QuestionListScreen
+                  questions={QUESTION_POOL}
+                  questionStats={questionStats}
+                  disabledIds={disabledIds}
+                  favoriteIds={favoriteIds}
+                  failedIds={failedIds}
+                  onSaveDisabled={async (ids) => {
+                    setDisabledIds(ids);
+                    await saveDisabledQuestionIds(ids);
+                  }}
+                  onGoHome={() => goHome(navigation)}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
+
+          <Stack.Screen name="examResult">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <ExamResultScreen
+                  score={score}
+                  totalQuestions={questions.length}
+                  questions={questions}
+                  answers={answers}
+                  onRepeatExam={() => {
+                    repeatExam();
+                    navigation.replace("exam");
+                  }}
+                  onStartAnotherExam={() => {
+                    startAnotherExamSameCount();
+                    navigation.replace("exam");
+                  }}
+                  onGoHome={() => goHome(navigation)}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
+
+          <Stack.Screen name="practice">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                {currentQuestion ? (
+                  <PracticeScreen
+                    question={currentQuestion}
+                    currentIndex={currentIndex}
+                    totalQuestions={questions.length}
+                    practiceMode={practiceMode}
+                    practiceSelected={practiceSelected}
+                    practiceAnswered={practiceAnswered}
+                    isFavorite={favoriteIds.includes(currentQuestion.id)}
+                    onToggleFavorite={toggleQuestionFavorite}
+                    onAnswer={answerPractice}
+                    onNext={() => {
+                      if (!nextPracticeQuestion()) {
+                        goHome(navigation);
+                      }
+                    }}
+                    onPrev={prevPracticeQuestion}
+                    onGoHome={() => goHome(navigation)}
+                  />
+                ) : (
+                  <HomeScreen
+                    totalQuestions={QUESTION_POOL.length}
+                    failedCount={failedIds.length}
+                    hardCount={hardIds.length}
+                    totalAccuracy={totalAccuracy}
+                    examCountInput={examCountInput}
+                    onExamCountChange={setExamCountInput}
+                    onStartExam={() => {
+                      startExam();
+                      navigation.replace("exam");
+                    }}
+                    onStartRandomPractice={() => {
+                      if (startPractice("random-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onStartFailedPractice={() => {
+                      if (startPractice("failed-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onStartHardPractice={() => {
+                      if (startPractice("hard-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onOpenStats={() => navigation.replace("stats")}
+                    onOpenQuestionList={() => navigation.replace("questionList")}
+                    onOpenOptions={() => navigation.replace("options")}
+                  />
+                )}
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
+
+          <Stack.Screen name="exam">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                {currentQuestion ? (
+                  <ExamScreen
+                    question={currentQuestion}
+                    currentIndex={currentIndex}
+                    totalQuestions={questions.length}
+                    selectedAnswer={answers[currentQuestion.id]}
+                    onAnswer={answerExam}
+                    onNext={nextExamQuestion}
+                    onPrev={prevExamQuestion}
+                    onFinish={() => requestFinishExam(() => navigation.replace("examResult"))}
+                    onGoHome={() => goHome(navigation)}
+                    isFavorite={favoriteIds.includes(currentQuestion.id)}
+                    onToggleFavorite={toggleQuestionFavorite}
+                    answeredQuestions={answeredQuestions}
+                    onNavigate={setCurrentIndex}
+                  />
+                ) : (
+                  <HomeScreen
+                    totalQuestions={QUESTION_POOL.length}
+                    failedCount={failedIds.length}
+                    hardCount={hardIds.length}
+                    totalAccuracy={totalAccuracy}
+                    examCountInput={examCountInput}
+                    onExamCountChange={setExamCountInput}
+                    onStartExam={() => {
+                      startExam();
+                      navigation.replace("exam");
+                    }}
+                    onStartRandomPractice={() => {
+                      if (startPractice("random-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onStartFailedPractice={() => {
+                      if (startPractice("failed-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onStartHardPractice={() => {
+                      if (startPractice("hard-list")) {
+                        navigation.replace("practice");
+                      }
+                    }}
+                    onOpenStats={() => navigation.replace("stats")}
+                    onOpenQuestionList={() => navigation.replace("questionList")}
+                    onOpenOptions={() => navigation.replace("options")}
+                  />
+                )}
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
+          </Stack.Navigator>
+        </NavigationContainer>
+      </FontScaleContext.Provider>
+    </SafeAreaProvider>
   );
 }

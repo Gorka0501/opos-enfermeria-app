@@ -1,6 +1,14 @@
 import { DEFAULT_EXAM_QUESTIONS } from "../constants/app";
 import { AppStats, Question } from "../types";
 
+/**
+ * Pure quiz/business helpers.
+ *
+ * This module intentionally avoids side effects and storage access,
+ * so behavior is predictable and easy to unit test.
+ */
+
+/** Calculates number of correct answers for a given question set. */
 export function calculateScore(
   questions: Question[],
   answers: Record<string, number>,
@@ -10,6 +18,10 @@ export function calculateScore(
   }, 0);
 }
 
+/**
+ * Parses and clamps exam size input to [1, maxQuestions].
+ * Falls back to DEFAULT_EXAM_QUESTIONS for invalid input.
+ */
 export function clampQuestionCount(value: string, maxQuestions: number): number {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) {
@@ -19,6 +31,14 @@ export function clampQuestionCount(value: string, maxQuestions: number): number 
   return Math.max(1, Math.min(parsed, maxQuestions));
 }
 
+/**
+ * Merges current exam answers into the persisted failed IDs set.
+ *
+ * Rules:
+ * - Correct answer removes ID from failed set.
+ * - Wrong answer adds ID.
+ * - Unanswered question is ignored (no add/remove).
+ */
 export function mergeFailedQuestionIds(
   existingFailedIds: string[],
   questions: Question[],
@@ -28,6 +48,12 @@ export function mergeFailedQuestionIds(
 
   questions.forEach((question: Question) => {
     const selected = answers[question.id];
+    if (selected === undefined) {
+      // Unanswered exam questions are shown as wrong in review UI,
+      // but should not affect persistent failed-question tracking.
+      return;
+    }
+
     if (selected === question.correctIndex) {
       updatedFailedIds.delete(question.id);
       return;
@@ -39,6 +65,7 @@ export function mergeFailedQuestionIds(
   return Array.from(updatedFailedIds);
 }
 
+/** Applies one practice answer result to failed IDs set. */
 export function updateFailedIdsForPractice(
   existingFailedIds: string[],
   question: Question,
@@ -54,15 +81,17 @@ export function updateFailedIdsForPractice(
   return Array.from(updatedFailedIds);
 }
 
-export function buildExamStats(stats: AppStats, totalQuestions: number, score: number): AppStats {
+/** Builds updated global exam stats after one finished exam. */
+export function buildExamStats(stats: AppStats, answeredCount: number, score: number): AppStats {
   return {
     ...stats,
-    totalAnswered: stats.totalAnswered + totalQuestions,
+    totalAnswered: stats.totalAnswered + answeredCount,
     totalCorrect: stats.totalCorrect + score,
     examsCompleted: stats.examsCompleted + 1,
   };
 }
 
+/** Builds updated stats after one answered practice question. */
 export function buildPracticeStats(stats: AppStats, isCorrect: boolean): AppStats {
   return {
     ...stats,
@@ -73,6 +102,7 @@ export function buildPracticeStats(stats: AppStats, isCorrect: boolean): AppStat
   };
 }
 
+/** Formats correctness ratio as one-decimal percentage string. */
 export function getAccuracy(correct: number, total: number): string {
   if (total <= 0) {
     return "0.0";
