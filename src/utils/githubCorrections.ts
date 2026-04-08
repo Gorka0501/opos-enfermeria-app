@@ -18,7 +18,10 @@ const GITHUB_CORRECTIONS_FILE = "data/user-corrections.json";
 const GITHUB_BRANCH = "main";
 const LOCAL_SUBMITTER_ID_KEY = "correctionsSubmitterId";
 const AUTO_CORRECTION_MIN_UNIQUE_SUBMITTERS = 10;
-const GITHUB_WRITE_TOKEN = process.env.EXPO_PUBLIC_GITHUB_WRITE_TOKEN ?? "";
+const GITHUB_WRITE_TOKEN = (process.env.EXPO_PUBLIC_GITHUB_WRITE_TOKEN ?? "")
+  .trim()
+  .replace(/^"(.*)"$/, "$1")
+  .replace(/^'(.*)'$/, "$1");
 
 type LegacyCorrectionSubmission = {
   date: string;
@@ -56,9 +59,14 @@ function createEmptyCorrectionsFile(): CorrectionsFile {
 }
 
 function parseCorrectionsFile(raw: string): CorrectionsFile {
-  const parsed = JSON.parse(raw) as Partial<CorrectionsFile> & {
-    submissions?: LegacyCorrectionSubmission[];
-  };
+  let parsed: Partial<CorrectionsFile> & { submissions?: LegacyCorrectionSubmission[] };
+  try {
+    parsed = JSON.parse(raw) as Partial<CorrectionsFile> & {
+      submissions?: LegacyCorrectionSubmission[];
+    };
+  } catch {
+    return createEmptyCorrectionsFile();
+  }
 
   // Current schema.
   if (parsed.version === 2 && parsed.byQuestion && typeof parsed.byQuestion === "object") {

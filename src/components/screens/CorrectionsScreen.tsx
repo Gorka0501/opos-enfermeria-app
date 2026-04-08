@@ -77,6 +77,7 @@ export function CorrectionsScreen({
       }),
     [corrections, originalById],
   );
+  const correctionsCount = correctionEntries.length;
 
   async function handleSubmit() {
     setSubmitStatus("loading");
@@ -116,12 +117,12 @@ export function CorrectionsScreen({
             onPress={() => setTab("list")}
           >
             <Text style={[styles.secondaryButtonText, tab === "list" && { color: theme.surface }]}>
-              Mis correcciones ({Object.keys(corrections).length})
+              Mis correcciones ({correctionsCount})
             </Text>
           </Pressable>
         </View>
 
-        {Object.keys(corrections).length > 0 && (
+        {correctionsCount > 0 && (
           <Pressable
             style={[styles.secondaryButton, { marginTop: 0, marginBottom: 12, alignSelf: "stretch" }]}
             onPress={onResetAllCorrections}
@@ -142,7 +143,7 @@ export function CorrectionsScreen({
                   <View style={[styles.card, { marginBottom: 10 }]}>
                     <Text style={styles.cardTitle}>Token no configurado</Text>
                     <Text style={styles.cardDescription}>
-                      Para habilitar "Enviar al desarrollador", configura GITHUB_WRITE_TOKEN en src/utils/githubCorrections.ts.
+                      Para habilitar "Enviar al desarrollador", define EXPO_PUBLIC_GITHUB_WRITE_TOKEN en .env.
                     </Text>
                   </View>
                 )}
