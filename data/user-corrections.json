@@ -1,39 +1,4 @@
 {
-  "submissions": [
-    {
-      "date": "2026-04-08T16:26:33.130Z",
-      "corrections": [
-        {
-          "questionId": "C1",
-          "originalIndex": 3,
-          "newIndex": 1
-        }
-      ]
-    },
-    {
-      "date": "2026-04-08T16:27:20.667Z",
-      "corrections": [
-        {
-          "questionId": "C5",
-          "originalIndex": 2,
-          "newIndex": 0
-        },
-        {
-          "questionId": "C6",
-          "originalIndex": 2,
-          "newIndex": 0
-        },
-        {
-          "questionId": "C7",
-          "originalIndex": 3,
-          "newIndex": 0
-        },
-        {
-          "questionId": "C8",
-          "originalIndex": 2,
-          "newIndex": 0
-        }
-      ]
-    }
+  "submissions": 
   ]
 }
