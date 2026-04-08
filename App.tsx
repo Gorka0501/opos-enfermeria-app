@@ -13,6 +13,7 @@ import { ExamScreen } from "./src/components/screens/ExamScreen";
 import { HomeScreen } from "./src/components/screens/HomeScreen";
 import { OptionsScreen } from "./src/components/screens/OptionsScreen";
 import { PracticeScreen } from "./src/components/screens/PracticeScreen";
+import { CorrectionsScreen } from "./src/components/screens/CorrectionsScreen";
 import { QuestionListScreen } from "./src/components/screens/QuestionListScreen";
 import { StatsScreen } from "./src/components/screens/StatsScreen";
 import { DEFAULT_EXAM_QUESTIONS, EMPTY_STATS } from "./src/constants/app";
@@ -21,6 +22,7 @@ import { styles } from "./src/styles/appStyles";
 import { AppStats, Question, QuestionStat } from "./src/types";
 import { pickSemiRandomQuestions, shuffleArray } from "./src/utils/shuffle";
 import {
+  applyCorrectAnswerOverrides,
   buildExamStats,
   buildPracticeStats,
   calculateScore,
@@ -30,6 +32,7 @@ import {
   updateFailedIdsForPractice,
 } from "./src/utils/quiz";
 import {
+  getCorrectAnswerOverrides,
   getFailedQuestionIds,
   getStats,
   saveFailedQuestionIds,
@@ -41,14 +44,19 @@ import {
   getDisabledQuestionIds,
   saveDisabledQuestionIds,
   saveAllQuestionStats,
+  saveCorrectAnswerOverrides,
   getFontScale,
   saveFontScale,
+  getCachedQuestions,
+  saveCachedQuestions,
 } from "./src/utils/storage";
 import { buildRecordedExamSessionStats } from "./src/utils/sessionHistory";
+import { submitCorrectionsToRepo } from "./src/utils/githubCorrections";
 
 type PracticeMode = "random-list" | "failed-list" | "favorites" | "hard-list";
 type RootStackParamList = {
   home: undefined;
+  corrections: undefined;
   options: undefined;
   stats: undefined;
   questionList: undefined;
@@ -58,6 +66,9 @@ type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const QUESTIONS_REMOTE_URL =
+  "https://raw.githubusercontent.com/Gorka0501/opos-enfermeria-app/main/data/questions.json";
 
 /**
  * App root orchestrator.
@@ -73,10 +84,12 @@ export default function App() {
 
   // Persisted datasets
   const [loading, setLoading] = useState(true);
+  const [baseQuestions, setBaseQuestions] = useState<Question[]>(QUESTION_POOL);
   const [failedIds, setFailedIds] = useState<string[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [disabledIds, setDisabledIds] = useState<string[]>([]);
   const [questionStats, setQuestionStats] = useState<Record<string, QuestionStat>>({});
+  const [correctAnswerOverrides, setCorrectAnswerOverrides] = useState<Record<string, number>>({});
   const [stats, setStats] = useState<AppStats>(EMPTY_STATS);
 
   // Session/runtime state
@@ -91,18 +104,24 @@ export default function App() {
   const [fontScale, setFontScale] = useState(1);
   const [hardMaxAccuracy, setHardMaxAccuracy] = useState(50);
   const [hardMinShown, setHardMinShown] = useState(2);
+  const questionPool = useMemo(
+    () => applyCorrectAnswerOverrides(baseQuestions, correctAnswerOverrides),
+    [baseQuestions, correctAnswerOverrides],
+  );
 
   // Initial hydration from local storage.
   useEffect(() => {
     (async () => {
       try {
-        const [ids, loadedStats, favs, qStats, disIds, loadedFontScale] = await Promise.all([
+        const [ids, loadedStats, favs, qStats, disIds, loadedFontScale, loadedOverrides, cachedQuestions] = await Promise.all([
           getFailedQuestionIds(),
           getStats(),
           getFavoriteQuestionIds(),
           getAllQuestionStats(),
           getDisabledQuestionIds(),
           getFontScale(),
+          getCorrectAnswerOverrides(),
+          getCachedQuestions(),
         ]);
         setFailedIds(ids);
         setStats(loadedStats);
@@ -110,11 +129,27 @@ export default function App() {
         setQuestionStats(qStats);
         setDisabledIds(disIds);
         setFontScale(loadedFontScale);
+        setCorrectAnswerOverrides(loadedOverrides);
+        if (cachedQuestions) setBaseQuestions(cachedQuestions);
       } catch (error) {
         // Keep app usable even if persistence init fails on some devices.
         console.error("Startup hydration failed", error);
       } finally {
         setLoading(false);
+      }
+
+      // Background fetch: silently update questions from GitHub if network is available.
+      try {
+        const response = await fetch(QUESTIONS_REMOTE_URL);
+        if (response.ok) {
+          const data = (await response.json()) as Question[];
+          if (Array.isArray(data) && data.length > 0) {
+            setBaseQuestions(data);
+            void saveCachedQuestions(data);
+          }
+        }
+      } catch {
+        // No network — keep using cache or bundled questions.
       }
     })();
   }, []);
@@ -128,6 +163,7 @@ export default function App() {
   const score = useMemo(() => calculateScore(questions, answers), [answers, questions]);
   const practiceSelected = currentQuestion ? practiceAnswers[currentQuestion.id] ?? null : null;
   const practiceAnswered = practiceSelected !== null;
+  const correctionCount = Object.keys(correctAnswerOverrides).length;
 
   async function persistStats(nextStats: AppStats) {
     // Keep UI state and storage fully synchronized.
@@ -174,7 +210,7 @@ export default function App() {
 
   function startExam() {
     // Exam is always created from enabled questions only.
-    const enabled = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+    const enabled = questionPool.filter((q) => !disabledIds.includes(q.id));
     const count = clampQuestionCount(examCountInput, enabled.length);
     setExamCountInput(String(count));
     const selected = pickSemiRandomQuestions(enabled, count, questionStats, failedIds);
@@ -200,7 +236,7 @@ export default function App() {
 
   function startAnotherExamSameCount() {
     // Reuse current exam size to make quick retries convenient.
-    const enabled = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+    const enabled = questionPool.filter((q) => !disabledIds.includes(q.id));
     const targetCount = questions.length > 0 ? questions.length : clampQuestionCount(examCountInput, enabled.length);
     setExamCountInput(String(targetCount));
 
@@ -221,13 +257,13 @@ export default function App() {
     let baseQuestions: Question[] = [];
 
     if (mode === "failed-list") {
-      baseQuestions = QUESTION_POOL.filter((question) => failedIds.includes(question.id));
+      baseQuestions = questionPool.filter((question) => failedIds.includes(question.id));
     } else if (mode === "favorites") {
-      baseQuestions = QUESTION_POOL.filter((question) => favoriteIds.includes(question.id));
+      baseQuestions = questionPool.filter((question) => favoriteIds.includes(question.id));
     } else if (mode === "hard-list") {
-      baseQuestions = QUESTION_POOL.filter((question) => hardIds.includes(question.id));
+      baseQuestions = questionPool.filter((question) => hardIds.includes(question.id));
     } else {
-      baseQuestions = QUESTION_POOL.filter((q) => !disabledIds.includes(q.id));
+      baseQuestions = questionPool.filter((q) => !disabledIds.includes(q.id));
     }
 
     if (!baseQuestions.length) {
@@ -321,6 +357,39 @@ export default function App() {
     }
   }
 
+  async function saveQuestionCorrection(questionId: string, optionIndex: number) {
+    const originalQuestion = QUESTION_POOL.find((question) => question.id === questionId);
+    if (!originalQuestion) {
+      return;
+    }
+
+    const nextOverrides = { ...correctAnswerOverrides };
+    if (optionIndex === originalQuestion.correctIndex) {
+      delete nextOverrides[questionId];
+    } else {
+      nextOverrides[questionId] = optionIndex;
+    }
+
+    setCorrectAnswerOverrides(nextOverrides);
+    await saveCorrectAnswerOverrides(nextOverrides);
+  }
+
+  async function resetQuestionCorrection(questionId: string) {
+    if (!(questionId in correctAnswerOverrides)) {
+      return;
+    }
+
+    const nextOverrides = { ...correctAnswerOverrides };
+    delete nextOverrides[questionId];
+    setCorrectAnswerOverrides(nextOverrides);
+    await saveCorrectAnswerOverrides(nextOverrides);
+  }
+
+  async function resetAllCorrections() {
+    setCorrectAnswerOverrides({});
+    await saveCorrectAnswerOverrides({});
+  }
+
   async function answerPractice(optionIndex: number) {
     if (!currentQuestion || practiceAnswered) {
       return;
@@ -389,8 +458,9 @@ export default function App() {
             {({ navigation }) => (
               <ErrorBoundary>
                 <HomeScreen
-                  totalQuestions={QUESTION_POOL.length}
+                  totalQuestions={questionPool.length}
                   failedCount={failedIds.length}
+                  correctionCount={correctionCount}
                   hardCount={hardIds.length}
                   totalAccuracy={totalAccuracy}
                   examCountInput={examCountInput}
@@ -409,6 +479,7 @@ export default function App() {
                       navigation.navigate("practice");
                     }
                   }}
+                  onOpenCorrections={() => navigation.navigate("corrections")}
                   onStartHardPractice={() => {
                     if (startPractice("hard-list")) {
                       navigation.navigate("practice");
@@ -437,6 +508,28 @@ export default function App() {
             )}
           </Stack.Screen>
 
+          <Stack.Screen name="corrections">
+            {({ navigation }) => (
+              <ErrorBoundary>
+                <CorrectionsScreen
+                  questions={questionPool}
+                  originalQuestions={baseQuestions}
+                  corrections={correctAnswerOverrides}
+                  onSaveCorrection={(questionId, optionIndex) => void saveQuestionCorrection(questionId, optionIndex)}
+                  onResetCorrection={(questionId) => void resetQuestionCorrection(questionId)}
+                  onResetAllCorrections={() => void resetAllCorrections()}
+                  onSubmitCorrections={async () => {
+                    const originalIndexById = Object.fromEntries(
+                      baseQuestions.map((q) => [q.id, q.correctIndex]),
+                    );
+                    await submitCorrectionsToRepo(correctAnswerOverrides, originalIndexById);
+                  }}
+                  onGoHome={() => goHome(navigation)}
+                />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
+
           <Stack.Screen name="stats">
             {({ navigation }) => (
               <ErrorBoundary>
@@ -445,7 +538,7 @@ export default function App() {
                   totalAccuracy={totalAccuracy}
                   practiceAccuracy={practiceAccuracy}
                   questionStats={questionStats}
-                  totalQuestions={QUESTION_POOL.length}
+                  totalQuestions={questionPool.length}
                   onResetAllStats={async () => {
                     setStats(EMPTY_STATS);
                     await saveStats(EMPTY_STATS);
@@ -466,7 +559,7 @@ export default function App() {
             {({ navigation }) => (
               <ErrorBoundary>
                 <QuestionListScreen
-                  questions={QUESTION_POOL}
+                  questions={questionPool}
                   questionStats={questionStats}
                   disabledIds={disabledIds}
                   favoriteIds={favoriteIds}
@@ -527,8 +620,9 @@ export default function App() {
                   />
                 ) : (
                   <HomeScreen
-                    totalQuestions={QUESTION_POOL.length}
+                    totalQuestions={questionPool.length}
                     failedCount={failedIds.length}
+                    correctionCount={correctionCount}
                     hardCount={hardIds.length}
                     totalAccuracy={totalAccuracy}
                     examCountInput={examCountInput}
@@ -547,6 +641,7 @@ export default function App() {
                         navigation.replace("practice");
                       }
                     }}
+                    onOpenCorrections={() => navigation.replace("corrections")}
                     onStartHardPractice={() => {
                       if (startPractice("hard-list")) {
                         navigation.replace("practice");
@@ -582,8 +677,9 @@ export default function App() {
                   />
                 ) : (
                   <HomeScreen
-                    totalQuestions={QUESTION_POOL.length}
+                    totalQuestions={questionPool.length}
                     failedCount={failedIds.length}
+                    correctionCount={correctionCount}
                     hardCount={hardIds.length}
                     totalAccuracy={totalAccuracy}
                     examCountInput={examCountInput}
@@ -602,6 +698,7 @@ export default function App() {
                         navigation.replace("practice");
                       }
                     }}
+                    onOpenCorrections={() => navigation.replace("corrections")}
                     onStartHardPractice={() => {
                       if (startPractice("hard-list")) {
                         navigation.replace("practice");

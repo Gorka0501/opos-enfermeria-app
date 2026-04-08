@@ -81,6 +81,28 @@ export function updateFailedIdsForPractice(
   return Array.from(updatedFailedIds);
 }
 
+/** Applies user-provided correct-answer overrides to the immutable base question pool. */
+export function applyCorrectAnswerOverrides(
+  questions: Question[],
+  overrides: Record<string, number>,
+): Question[] {
+  return questions.map((question) => {
+    const override = overrides[question.id];
+    if (override === undefined || override < 0 || override >= question.options.length) {
+      return question;
+    }
+
+    if (override === question.correctIndex) {
+      return question;
+    }
+
+    return {
+      ...question,
+      correctIndex: override,
+    };
+  });
+}
+
 /** Builds updated global exam stats after one finished exam. */
 export function buildExamStats(stats: AppStats, answeredCount: number, score: number): AppStats {
   return {

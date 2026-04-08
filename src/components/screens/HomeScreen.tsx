@@ -6,6 +6,7 @@ import { styles, theme } from "../../styles/appStyles";
 type HomeScreenProps = {
   totalQuestions: number;
   failedCount: number;
+  correctionCount: number;
   hardCount: number;
   totalAccuracy: string;
   examCountInput: string;
@@ -13,6 +14,7 @@ type HomeScreenProps = {
   onStartExam: () => void;
   onStartRandomPractice: () => void;
   onStartFailedPractice: () => void;
+  onOpenCorrections: () => void;
   onStartHardPractice: () => void;
   onOpenStats: () => void;
   onOpenQuestionList?: () => void;
@@ -22,6 +24,7 @@ type HomeScreenProps = {
 export function HomeScreen({
   totalQuestions,
   failedCount,
+  correctionCount,
   hardCount,
   totalAccuracy,
   examCountInput,
@@ -29,6 +32,7 @@ export function HomeScreen({
   onStartExam,
   onStartRandomPractice,
   onStartFailedPractice,
+  onOpenCorrections,
   onStartHardPractice,
   onOpenStats,
   onOpenQuestionList,
@@ -74,7 +78,7 @@ export function HomeScreen({
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Modo práctica</Text>
-          <Text style={styles.cardDescription}>Entrena sin presión con dos enfoques distintos.</Text>
+          <Text style={styles.cardDescription}>Entrena sin presión con repaso general, preguntas falladas o preguntas difíciles.</Text>
 
           <Pressable style={styles.primaryButton} onPress={onStartRandomPractice}>
             <Text style={styles.primaryButtonText}>Práctica Aleatoria</Text>
@@ -88,6 +92,8 @@ export function HomeScreen({
           >
             <Text style={styles.secondaryButtonText}>🎯 Práctica de Errores</Text>
           </Pressable>
+          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Repite solo las preguntas falladas para reforzar puntos débiles.</Text>
+
           <Pressable
             style={[styles.secondaryButton, { marginTop: 10 }, hardCount === 0 && styles.disabledButton]}
             onPress={onStartHardPractice}
@@ -95,8 +101,18 @@ export function HomeScreen({
           >
             <Text style={styles.secondaryButtonText}>🔥 Práctica Difícil</Text>
           </Pressable>
-          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Solo preguntas falladas para reforzar puntos débiles.</Text>
+          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Sesión libre para entrenar velocidad, memoria y preguntas complejas.</Text>
           <Text style={[styles.cardDescription, { marginTop: 4 }]}>Pendientes de repaso: {failedCount}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Correcciones</Text>
+          <Text style={styles.cardDescription}>Corrige respuestas que estén mal marcadas en el sistema y guarda el cambio en tu dispositivo.</Text>
+
+          <Pressable style={styles.primaryButton} onPress={onOpenCorrections}>
+            <Text style={styles.primaryButtonText}>🛠 Abrir Correcciones</Text>
+          </Pressable>
+          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Correcciones guardadas: {correctionCount}</Text>
         </View>
 
         <View style={styles.card}>

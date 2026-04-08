@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppStats, QuestionStat } from "../types";
+import { AppStats, Question, QuestionStat } from "../types";
 import { buildRecordedExamSessionStats } from "./sessionHistory";
 
 /**
@@ -32,6 +32,8 @@ const FAVORITES_KEY = "favoriteQuestionIds";
 const QUESTION_STATS_KEY = "questionStats";
 const DISABLED_QUESTIONS_KEY = "disabledQuestionIds";
 const FONT_SCALE_KEY = "fontScale";
+const CORRECT_ANSWER_OVERRIDES_KEY = "correctAnswerOverrides";
+const CACHED_QUESTIONS_KEY = "cachedRemoteQuestions";
 
 const DEFAULT_STATS: AppStats = {
   totalAnswered: 0,
@@ -197,6 +199,27 @@ export async function saveDisabledQuestionIds(ids: string[]): Promise<void> {
   await storage.setString(DISABLED_QUESTIONS_KEY, JSON.stringify(ids));
 }
 
+// QUESTION ANSWER CORRECTIONS
+/** Returns locally corrected answer indexes keyed by question ID. */
+export async function getCorrectAnswerOverrides(): Promise<Record<string, number>> {
+  const raw = await storage.getString(CORRECT_ANSWER_OVERRIDES_KEY);
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => typeof value === "number" && Number.isInteger(value)),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/** Saves locally corrected answer indexes keyed by question ID. */
+export async function saveCorrectAnswerOverrides(overrides: Record<string, number>): Promise<void> {
+  await storage.setString(CORRECT_ANSWER_OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
 // UI SETTINGS
 /** Returns persisted global font scale with safe clamp. */
 export async function getFontScale(): Promise<number> {
@@ -212,4 +235,22 @@ export async function getFontScale(): Promise<number> {
 export async function saveFontScale(scale: number): Promise<void> {
   const safeScale = Math.min(1.4, Math.max(0.85, scale));
   await storage.setString(FONT_SCALE_KEY, String(safeScale));
+}
+
+// CACHED REMOTE QUESTIONS
+/** Returns last successfully fetched remote questions, or null if not cached. */
+export async function getCachedQuestions(): Promise<Question[] | null> {
+  const raw = await storage.getString(CACHED_QUESTIONS_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as Question[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Saves remote questions as local cache. */
+export async function saveCachedQuestions(questions: Question[]): Promise<void> {
+  await storage.setString(CACHED_QUESTIONS_KEY, JSON.stringify(questions));
 }

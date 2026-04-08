@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyCorrectAnswerOverrides,
   buildExamStats,
   buildPracticeStats,
   calculateScore,
@@ -69,6 +70,20 @@ test("updateFailedIdsForPractice adds a question when answered incorrectly", () 
   const result = updateFailedIdsForPractice([], sampleQuestions[1], false);
 
   assert.deepEqual(result, ["Q2"]);
+});
+
+test("applyCorrectAnswerOverrides replaces the correct answer index when override is valid", () => {
+  const result = applyCorrectAnswerOverrides(sampleQuestions, { Q1: 3 });
+
+  assert.equal(result[0].correctIndex, 3);
+  assert.equal(result[1].correctIndex, 2);
+});
+
+test("applyCorrectAnswerOverrides ignores invalid override indexes", () => {
+  const result = applyCorrectAnswerOverrides(sampleQuestions, { Q1: 99, Q2: -1 });
+
+  assert.equal(result[0].correctIndex, 1);
+  assert.equal(result[1].correctIndex, 2);
 });
 
 test("buildExamStats increments exam totals", () => {
