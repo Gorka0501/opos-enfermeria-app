@@ -1,4 +1,38 @@
 {
   "version": 2,
-  "byQuestion": {}
+  "byQuestion": {
+    "C3": {
+      "originalIndex": 0,
+      "suggestions": [
+        {
+          "date": "2026-04-08T20:31:54.014Z",
+          "submitterId": "device-mnqi7mec-vz2thsze",
+          "originalIndex": 0,
+          "suggestedIndex": 2
+        }
+      ]
+    },
+    "C4": {
+      "originalIndex": 0,
+      "suggestions": [
+        {
+          "date": "2026-04-08T20:31:54.014Z",
+          "submitterId": "device-mnqi7mec-vz2thsze",
+          "originalIndex": 0,
+          "suggestedIndex": 2
+        }
+      ]
+    },
+    "C5": {
+      "originalIndex": 2,
+      "suggestions": [
+        {
+          "date": "2026-04-08T20:31:54.014Z",
+          "submitterId": "device-mnqi7mec-vz2thsze",
+          "originalIndex": 2,
+          "suggestedIndex": 0
+        }
+      ]
+    }
+  }
 }
