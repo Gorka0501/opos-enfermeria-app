@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText as Text } from "../AppText";
 import { styles, theme } from "../../styles/appStyles";
@@ -19,6 +19,9 @@ type HomeScreenProps = {
   onOpenStats: () => void;
   onOpenQuestionList?: () => void;
   onOpenOptions?: () => void;
+  onRefreshQuestions?: () => void;
+  updatingQuestions?: boolean;
+  lastQuestionsUpdate?: number | null;
 };
 
 export function HomeScreen({
@@ -37,6 +40,9 @@ export function HomeScreen({
   onOpenStats,
   onOpenQuestionList,
   onOpenOptions,
+  onRefreshQuestions,
+  updatingQuestions = false,
+  lastQuestionsUpdate = null,
 }: HomeScreenProps) {
   return (
     <SafeAreaView style={styles.container}>
@@ -106,16 +112,6 @@ export function HomeScreen({
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Correcciones</Text>
-          <Text style={styles.cardDescription}>Corrige respuestas que estén mal marcadas en el sistema y guarda el cambio en tu dispositivo.</Text>
-
-          <Pressable style={styles.primaryButton} onPress={onOpenCorrections}>
-            <Text style={styles.primaryButtonText}>🛠 Abrir Correcciones</Text>
-          </Pressable>
-          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Correcciones guardadas: {correctionCount}</Text>
-        </View>
-
-        <View style={styles.card}>
           <Text style={styles.cardTitle}>Seguimiento</Text>
           <Text style={styles.cardDescription}>Consulta estadísticas y gestiona el banco de preguntas.</Text>
           <Pressable style={styles.secondaryButton} onPress={onOpenStats}>
@@ -134,6 +130,50 @@ export function HomeScreen({
             </Pressable>
           )}
         </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Correcciones</Text>
+          <Text style={styles.cardDescription}>Corrige respuestas que estén mal marcadas en el sistema y guarda el cambio en tu dispositivo.</Text>
+
+          <Pressable style={styles.primaryButton} onPress={onOpenCorrections}>
+            <Text style={styles.primaryButtonText}>🛠 Abrir Correcciones</Text>
+          </Pressable>
+          <Text style={[styles.cardDescription, { marginTop: 6 }]}>Correcciones guardadas: {correctionCount}</Text>
+        </View>
+
+        {onRefreshQuestions && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Actualización de preguntas</Text>
+            <Text style={styles.cardDescription}>
+              {lastQuestionsUpdate
+                ? `Última actualización: ${new Date(lastQuestionsUpdate).toLocaleDateString("es-ES", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : "Sin actualización remota aún (usando preguntas incluidas en la app)."}
+            </Text>
+            <Pressable
+              style={[styles.secondaryButton, { marginTop: 10 }, updatingQuestions && styles.disabledButton]}
+              onPress={onRefreshQuestions}
+              disabled={updatingQuestions}
+            >
+              {updatingQuestions ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <ActivityIndicator size="small" color="#1b4965" />
+                  <Text style={styles.secondaryButtonText}>Actualizando...</Text>
+                </View>
+              ) : (
+                <Text style={styles.secondaryButtonText}>🔄 Actualizar preguntas</Text>
+              )}
+            </Pressable>
+            <Text style={[styles.cardDescription, { marginTop: 6 }]}>
+              Se comprueba automáticamente una vez al día.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -6,6 +6,7 @@ import { AppText as Text } from "../AppText";
 import { useFontScale } from "../../context/FontScaleContext";
 import { openPdfUri } from "../../utils/openPdf";
 import { styles, theme } from "../../styles/appStyles";
+import { ProfileId } from "../../constants/profiles";
 
 type OptionsScreenProps = {
   onGoHome: () => void;
@@ -16,6 +17,7 @@ type OptionsScreenProps = {
   onHardMinShownChange: (v: number) => void;
   currentProfileLabel?: string;
   onChangeProfile?: () => void;
+  profileId?: ProfileId;
 };
 
 type PdfItem = {
@@ -24,20 +26,20 @@ type PdfItem = {
   module: number;
 };
 
-const PDFS_COMMON: PdfItem[] = [
+const PDFS_COMUN_ABC1: PdfItem[] = [
   {
     code: "1.1",
-    title: "Temario Común – Preguntas",
+    title: "Temario Común A/B/C1 – Preguntas",
     module: require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf"),
   },
   {
     code: "1.2",
-    title: "Temario Común – Respuestas",
+    title: "Temario Común A/B/C1 – Respuestas",
     module: require("../../../assets/temario/temario_enfermero_200_g.pdf"),
   },
 ];
 
-const PDFS_NURSING: PdfItem[] = [
+const PDFS_ENFERMERIA: PdfItem[] = [
   {
     code: "2.1",
     title: "Temario Enfermería – Preguntas",
@@ -52,7 +54,7 @@ const PDFS_NURSING: PdfItem[] = [
 
 const FONT_PRESETS = [0.85, 0.9, 1, 1.15, 1.3, 1.4];
 
-export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, hardMinShown, onHardMaxAccuracyChange, onHardMinShownChange, currentProfileLabel, onChangeProfile }: OptionsScreenProps) {
+export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, hardMinShown, onHardMaxAccuracyChange, onHardMinShownChange, currentProfileLabel, onChangeProfile, profileId }: OptionsScreenProps) {
   const fontScale = useFontScale();
 
   async function openBundledPdf(assetModule: number) {
@@ -187,32 +189,56 @@ export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, ha
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Temario en PDF (4 archivos)</Text>
+          <Text style={styles.cardTitle}>📚 Temario en PDF</Text>
           <Text style={[styles.cardDescription, { marginTop: 6, marginBottom: 10 }]}>
-            Índice por división: bloque común y bloque específico de enfermería.
+            Material de estudio disponible para tu categoría.
           </Text>
 
-          <Text style={[styles.cardTitle, { marginTop: 2 }]}>1) Temario Común</Text>
-          {PDFS_COMMON.map((pdf) => (
-            <Pressable
-              key={pdf.code}
-              style={[styles.secondaryButton, { marginTop: 8 }]}
-              onPress={() => void openBundledPdf(pdf.module)}
-            >
-              <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
-            </Pressable>
-          ))}
+          {/* Común A/B/C1 — disponible para enfermería y técnico superior */}
+          {(profileId === "enfermeria" || profileId === "tecnico_superior" || !profileId) && (
+            <>
+              <Text style={[styles.cardTitle, { marginTop: 2 }]}>1) Temario Común A/B/C1</Text>
+              {PDFS_COMUN_ABC1.map((pdf) => (
+                <Pressable
+                  key={pdf.code}
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={() => void openBundledPdf(pdf.module)}
+                >
+                  <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
+                </Pressable>
+              ))}
+            </>
+          )}
 
-          <Text style={[styles.cardTitle, { marginTop: 14 }]}>2) Temario Enfermería</Text>
-          {PDFS_NURSING.map((pdf) => (
-            <Pressable
-              key={pdf.code}
-              style={[styles.secondaryButton, { marginTop: 8 }]}
-              onPress={() => void openBundledPdf(pdf.module)}
-            >
-              <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
-            </Pressable>
-          ))}
+          {/* Enfermería específico */}
+          {(profileId === "enfermeria" || !profileId) && (
+            <>
+              <Text style={[styles.cardTitle, { marginTop: 14 }]}>2) Temario Específico Enfermería</Text>
+              {PDFS_ENFERMERIA.map((pdf) => (
+                <Pressable
+                  key={pdf.code}
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={() => void openBundledPdf(pdf.module)}
+                >
+                  <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
+                </Pressable>
+              ))}
+            </>
+          )}
+
+          {/* Técnico Superior — sin temario específico todavía */}
+          {profileId === "tecnico_superior" && (
+            <View style={{ marginTop: 14, padding: 10, backgroundColor: "#f4f9ff", borderRadius: 8, borderWidth: 1, borderColor: "#c8dce8" }}>
+              <Text style={[styles.cardDescription, { color: theme.textMuted }]}>📭 Temario específico de Técnico Superior no disponible aún.</Text>
+            </View>
+          )}
+
+          {/* Celador — sin temario disponible */}
+          {profileId === "celador" && (
+            <View style={{ marginTop: 8, padding: 10, backgroundColor: "#f4f9ff", borderRadius: 8, borderWidth: 1, borderColor: "#c8dce8" }}>
+              <Text style={[styles.cardDescription, { color: theme.textMuted }]}>📭 Temario en PDF no disponible para Celador/a aún.</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

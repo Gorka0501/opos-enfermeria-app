@@ -202,7 +202,7 @@ def parse_questions(text: str) -> list[dict]:
         return fixed
 
     while i < len(lines):
-        q_match = re.match(r"^(\d{1,4})\s*[\.-]+\s*(.+)$", lines[i])
+        q_match = re.match(r"^(\d{1,4})\s*[\.-]+\s*(.*)$", lines[i])
         if not q_match:
             i += 1
             continue
@@ -213,7 +213,7 @@ def parse_questions(text: str) -> list[dict]:
 
         # Continuacion del enunciado hasta detectar opcion a)
         while i < len(lines) and not re.match(r"^[a-dA-D]\)\s*", lines[i]):
-            if re.match(r"^\d{1,4}\s*[\.-]+\s+", lines[i]):
+            if re.match(r"^\d{1,4}\s*[\.-]+", lines[i]):
                 break
             q_text_parts.append(lines[i])
             i += 1
@@ -229,7 +229,7 @@ def parse_questions(text: str) -> list[dict]:
                 i += 1
                 continue
 
-            if re.match(r"^\d{1,4}\s*[\.-]+\s+", lines[i]):
+            if re.match(r"^\d{1,4}\s*[\.-]+", lines[i]):
                 break
 
             if current_letter is not None:

@@ -1986,7 +1986,7 @@
       "Consolidar los avances logrados y profundizar el proceso transformador.",
       "Establecer unos cimientos s\u00f3lidos para garantizar el cumplimiento de la legislaci\u00f3n y la alineaci\u00f3n a los marcos estrat\u00e9gicos.",
       "Reducir la brecha salarial a la mitad en todas las categor\u00edas profesionales.",
-      "Lograr la aprobaci\u00f3n por parte del Consejo de Direcci\u00f3n de Osakidetza en julio de 2025."
+      "Lograr la aprobaci\u00f3n por parte del Consejo de Direcci\u00f3n de Osakidetza en julio de"
     ],
     "correctIndex": 1,
     "source": "A_B_C1/Preguntas.pdf#166"
@@ -2029,7 +2029,7 @@
   },
   {
     "id": "A_B_C1_170",
-    "question": "De acuerdo con el III Plan de Normalizaci\u00f3n del Uso del Euskera en Osakidetza 2022-2028, se\u00f1ale la respuesta correcta:",
+    "question": "2028, se\u00f1ale la respuesta correcta:",
     "options": [
       "Por aplicaci\u00f3n de la Ley Org\u00e1nica de Protecci\u00f3n de Datos Personales y garant\u00eda de los derechos digitales no puede constar en los datos personales de cada paciente de Osakidetza su idioma de preferencia para las comunicaciones con Osakidetza.",
       "El signo azul con la letra e indica que la persona paciente no tiene competencia para comunicarse en un idioma que no sea el euskera para las comunicaciones orales con Osakidetza.",
@@ -2037,11 +2037,11 @@
       "A las personas que elijan el euskera como lengua prioritaria en sus comunicaciones con Osakidetza solo se les deber\u00e1 ofrecer servicios en euskera."
     ],
     "correctIndex": 2,
-    "source": "A_B_C1/Preguntas.pdf#170"
+    "source": "A_B_C1/Preguntas.pdf#2022"
   },
   {
     "id": "A_B_C1_171",
-    "question": "En atenci\u00f3n al III Plan de Normalizaci\u00f3n del Uso del Euskera en Osakidetza 2022-2028, se\u00f1ale la respuesta correcta:",
+    "question": "2028, se\u00f1ale la respuesta correcta:",
     "options": [
       "\u201cAukeratu zeure hizkuntza/Elige tu lengua\u201d es el lema de la campa\u00f1a de activaci\u00f3n del registro de la lengua preferente de cada paciente llevada a cabo en 2017.",
       "Se atribuye a todas las direcciones y gerencias de Osakidetza la responsabilidad de realizar la campa\u00f1a con el lema \u201cAukeratu zeure hizkuntza/Elige tu lengua\u201d.",
@@ -2049,7 +2049,7 @@
       "\u201cAukeratu zeure hizkuntza/Elige tu lengua\u201d es el lema de la campa\u00f1a de activaci\u00f3n del registro de la lengua preferente de cada paciente que realizar\u00e1 Osakidetza durante el tercer a\u00f1o de planificaci\u00f3n."
     ],
     "correctIndex": 2,
-    "source": "A_B_C1/Preguntas.pdf#171"
+    "source": "A_B_C1/Preguntas.pdf#2022"
   },
   {
     "id": "A_B_C1_172",
@@ -2101,7 +2101,7 @@
   },
   {
     "id": "A_B_C1_176",
-    "question": "Conforme al III Plan de Normalizaci\u00f3n del Uso del Euskera en Osakidetza 2022-2028:",
+    "question": "2028:",
     "options": [
       "En los casos de los mensajes SMS que se env\u00edan a los tel\u00e9fonos m\u00f3viles de personas trabajadoras o candidatas, estar\u00e1n escritos en las dos lenguas oficiales, primero en castellano y luego en euskera.",
       "Los escritos individualizados de respuesta a solicitudes y reclamaciones de las personas trabajadoras deber\u00e1n redactarse en las dos lenguas oficiales.",
@@ -2109,11 +2109,11 @@
       "Las informaciones y comunicaciones no personalizadas dirigidas al personal deber\u00e1n redactarse en las dos lenguas oficiales y se dar\u00e1 prioridad al castellano."
     ],
     "correctIndex": 2,
-    "source": "A_B_C1/Preguntas.pdf#176"
+    "source": "A_B_C1/Preguntas.pdf#2022"
   },
   {
     "id": "A_B_C1_177",
-    "question": "Seg\u00fan el Resumen Ejecutivo del Plan Oncol\u00f3gico Integral de Euskadi (POIE) 2025-2030, \u00bfde qu\u00e9 porcentaje de los fallecimientos en Euskadi fue responsable el c\u00e1ncer en el a\u00f1o 2023?",
+    "question": "2030, \u00bfde qu\u00e9 porcentaje de los fallecimientos en Euskadi fue responsable el c\u00e1ncer en el a\u00f1o 2023?",
     "options": [
       "22,3%",
       "Menos del 15%",
@@ -2121,11 +2121,11 @@
       "28%"
     ],
     "correctIndex": 3,
-    "source": "A_B_C1/Preguntas.pdf#177"
+    "source": "A_B_C1/Preguntas.pdf#2025"
   },
   {
     "id": "A_B_C1_178",
-    "question": "Seg\u00fan el Resumen Ejecutivo del Plan Oncol\u00f3gico Integral de Euskadi (POIE) 2025-2030, \u00bfcu\u00e1les fueron las dos localizaciones de c\u00e1ncer m\u00e1s frecuentes en Euskadi en el periodo 2015-2019, consideradas separadamente por sexo?",
+    "question": "2030, \u00bfcu\u00e1les fueron las dos localizaciones de c\u00e1ncer m\u00e1s frecuentes en Euskadi en el periodo 2015-2019, consideradas separadamente por sexo?",
     "options": [
       "C\u00e1ncer colorrectal y c\u00e1ncer de pulm\u00f3n.",
       "C\u00e1ncer de mama en mujeres y c\u00e1ncer de pr\u00f3stata en hombres.",
@@ -2133,7 +2133,7 @@
       "Leucemia y Linfoma de Hodgkin."
     ],
     "correctIndex": 1,
-    "source": "A_B_C1/Preguntas.pdf#178"
+    "source": "A_B_C1/Preguntas.pdf#2025"
   },
   {
     "id": "A_B_C1_179",
@@ -2185,7 +2185,7 @@
   },
   {
     "id": "A_B_C1_183",
-    "question": "Seg\u00fan el listado de acr\u00f3nimos del Plan Oncol\u00f3gico Integral de Euskadi (POIE) 2025-2030, \u00bfa qu\u00e9 hacen referencia las siglas PROMs?",
+    "question": "2030, \u00bfa qu\u00e9 hacen referencia las siglas PROMs?",
     "options": [
       "Plan de Resultados Oncol\u00f3gicos y Metodolog\u00eda de Seguimiento.",
       "Plan de Riesgos Ocupacionales en Medicina Sanitaria.",
@@ -2193,7 +2193,7 @@
       "Medidas de Resultados Reportadas por los y las Pacientes."
     ],
     "correctIndex": 3,
-    "source": "A_B_C1/Preguntas.pdf#183"
+    "source": "A_B_C1/Preguntas.pdf#2025"
   },
   {
     "id": "A_B_C1_184",

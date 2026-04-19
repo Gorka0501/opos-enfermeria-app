@@ -70,9 +70,9 @@ export function PracticeScreen({
   }
 
   function getSourcePdfModule(): number | null {
-    const src = question.source ?? "";
-    if (src.includes("comun")) return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
-    if (src.includes("enfermeria") || src.includes("enfermero_500")) return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
+    const collection = question.id.match(/^(.+)_\d+$/)?.[1] ?? "";
+    if (collection === "A_B_C1") return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
+    if (collection === "Enfermeria") return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
     return null;
   }
 

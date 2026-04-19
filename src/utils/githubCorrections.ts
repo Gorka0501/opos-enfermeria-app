@@ -14,7 +14,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const GITHUB_OWNER = "Gorka0501";
 const GITHUB_REPO = "opos-enfermeria-app";
-const GITHUB_CORRECTIONS_FILE = "data/user-corrections.json";
+// Source folders that map directly to data/ subdirectories.
+const QUESTION_FOLDERS = ["A_B_C1", "C2_C3_D_E", "Celador", "Enfermeria", "Tecnico_Superior"] as const;
+
+/** Derives the data/ subfolder from a question ID (e.g. "C2_C3_D_E_3" → "C2_C3_D_E"). */
+function folderFromQuestionId(questionId: string): string | null {
+  for (const folder of QUESTION_FOLDERS) {
+    if (questionId.startsWith(folder + "_")) return folder;
+  }
+  return null;
+}
+
+function correctionsFilePath(folder: string): string {
+  return `data/${folder}/user-corrections.json`;
+}
 const GITHUB_BRANCH = "main";
 const LOCAL_SUBMITTER_ID_KEY = "correctionsSubmitterId";
 const AUTO_CORRECTION_MIN_UNIQUE_SUBMITTERS = 10;
@@ -165,7 +178,8 @@ export function isSubmitConfigured(): boolean {
 }
 
 /**
- * Appends the user's corrections to data/user-corrections.json in the repo.
+ * Appends user corrections to each source folder's user-corrections.json in the repo.
+ * Groups corrections by the question ID prefix (e.g. "C2_C3_D_E_3" → data/C2_C3_D_E/).
  * Creates the file if it doesn't exist yet.
  */
 export async function submitCorrectionsToRepo(
@@ -176,7 +190,6 @@ export async function submitCorrectionsToRepo(
     throw new Error("Token no configurado.");
   }
 
-  const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_CORRECTIONS_FILE}`;
   const baseHeaders: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "Content-Type": "application/json",
@@ -189,101 +202,112 @@ export async function submitCorrectionsToRepo(
     Authorization: `${scheme} ${GITHUB_WRITE_TOKEN}`,
   });
 
-  // 1. Fetch current file to get sha and existing content.
-  let currentSha: string | undefined;
-  let existing: CorrectionsFile = createEmptyCorrectionsFile();
   const submitterId = await getSubmitterId();
-
-  const getResp = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}`, { headers: makeHeaders("Bearer") });
-  if (getResp.ok) {
-    const data = (await getResp.json()) as { sha: string; content: string };
-    currentSha = data.sha;
-    const decoded = decodeURIComponent(
-      Array.from(atob(data.content.replace(/\n/g, "")))
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join(""),
-    );
-    existing = parseCorrectionsFile(decoded);
-  } else if (getResp.status !== 404) {
-    const err = (await getResp.json()) as { message?: string; documentation_url?: string };
-    throw new Error(
-      `GET ${getResp.status}: ${err.message ?? "Error al leer archivo"}${
-        err.documentation_url ? ` | ${err.documentation_url}` : ""
-      }`,
-    );
-  }
-
-  // 2. Append per-question suggestions from this submitter.
   const nowIso = new Date().toISOString();
+
+  // Group corrections by the source folder derived from each question ID.
+  const byFolder = new Map<string, Record<string, number>>();
   for (const [questionId, suggestedIndex] of Object.entries(corrections)) {
-    const originalIndex = originalIndexById[questionId] ?? -1;
-    const question = existing.byQuestion[questionId] ?? {
-      originalIndex,
-      suggestions: [],
-    };
-
-    if (question.originalIndex < 0 && Number.isInteger(originalIndex)) {
-      question.originalIndex = originalIndex;
-    }
-
-    // Remove previous vote from this same submitter for this question.
-    question.suggestions = question.suggestions.filter((item) => item.submitterId !== submitterId);
-    question.suggestions.push({
-      date: nowIso,
-      submitterId,
-      originalIndex,
-      suggestedIndex,
-    });
-
-    recomputeAutoCorrection(question);
-    existing.byQuestion[questionId] = question;
+    const folder = folderFromQuestionId(questionId);
+    if (!folder) continue; // unknown ID format – skip silently
+    const group = byFolder.get(folder) ?? {};
+    group[questionId] = suggestedIndex;
+    byFolder.set(folder, group);
   }
 
-  // 3. Encode and push.
-  const json = JSON.stringify(existing, null, 2);
-  const encoded = btoa(
-    encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1: string) =>
-      String.fromCharCode(parseInt(p1, 16)),
-    ),
-  );
+  // Submit to each folder's file independently.
+  for (const [folder, folderCorrections] of byFolder) {
+    const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${correctionsFilePath(folder)}`;
 
-  const body: Record<string, unknown> = {
-    message: `User corrections report ${new Date().toISOString().slice(0, 10)}`,
-    content: encoded,
-    branch: GITHUB_BRANCH,
-  };
-  if (currentSha) body.sha = currentSha;
+    // 1. Fetch current file to get sha and existing content.
+    let currentSha: string | undefined;
+    let existing: CorrectionsFile = createEmptyCorrectionsFile();
 
-  const putWithScheme = async (scheme: "Bearer" | "token") =>
-    fetch(apiUrl, {
-    method: "PUT",
-    headers: makeHeaders(scheme),
-    body: JSON.stringify(body),
-  });
-
-  // Some token types behave better with one auth scheme or the other.
-  let putResp = await putWithScheme("Bearer");
-  if (putResp.status === 401 || putResp.status === 403) {
-    putResp = await putWithScheme("token");
-  }
-
-  if (!putResp.ok) {
-    const err = (await putResp.json()) as { message?: string; documentation_url?: string };
-    const isPermissionsError = putResp.status === 403 &&
-      (err.message ?? "").toLowerCase().includes("resource not accessible by personal access token");
-
-    if (isPermissionsError) {
+    const getResp = await fetch(`${apiUrl}?ref=${GITHUB_BRANCH}`, { headers: makeHeaders("Bearer") });
+    if (getResp.ok) {
+      const data = (await getResp.json()) as { sha: string; content: string };
+      currentSha = data.sha;
+      const decoded = decodeURIComponent(
+        Array.from(atob(data.content.replace(/\n/g, "")))
+          .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+          .join(""),
+      );
+      existing = parseCorrectionsFile(decoded);
+    } else if (getResp.status !== 404) {
+      const err = (await getResp.json()) as { message?: string; documentation_url?: string };
       throw new Error(
-        "PUT 403: Token sin permiso para escribir en el repo. " +
-          "Revisa fine-grained PAT en el owner correcto, acceso al repo opos-enfermeria-app y Contents=Read and write. " +
-          "Si cambiaste token, recuerda rebuild/update de la app.",
+        `GET ${getResp.status}: ${err.message ?? "Error al leer archivo"}${
+          err.documentation_url ? ` | ${err.documentation_url}` : ""
+        }`,
       );
     }
 
-    throw new Error(
-      `PUT ${putResp.status}: ${err.message ?? "Error al guardar archivo"}${
-        err.documentation_url ? ` | ${err.documentation_url}` : ""
-      }`,
+    // 2. Append per-question suggestions from this submitter.
+    for (const [questionId, suggestedIndex] of Object.entries(folderCorrections)) {
+      const originalIndex = originalIndexById[questionId] ?? -1;
+      const question = existing.byQuestion[questionId] ?? {
+        originalIndex,
+        suggestions: [],
+      };
+
+      if (question.originalIndex < 0 && Number.isInteger(originalIndex)) {
+        question.originalIndex = originalIndex;
+      }
+
+      question.suggestions = question.suggestions.filter((item) => item.submitterId !== submitterId);
+      question.suggestions.push({
+        date: nowIso,
+        submitterId,
+        originalIndex,
+        suggestedIndex,
+      });
+
+      recomputeAutoCorrection(question);
+      existing.byQuestion[questionId] = question;
+    }
+
+    // 3. Encode and push.
+    const json = JSON.stringify(existing, null, 2);
+    const encoded = btoa(
+      encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1: string) =>
+        String.fromCharCode(parseInt(p1, 16)),
+      ),
     );
+
+    const body: Record<string, unknown> = {
+      message: `User corrections report ${new Date().toISOString().slice(0, 10)}`,
+      content: encoded,
+      branch: GITHUB_BRANCH,
+    };
+    if (currentSha) body.sha = currentSha;
+
+    const putWithScheme = async (scheme: "Bearer" | "token") =>
+      fetch(apiUrl, { method: "PUT", headers: makeHeaders(scheme), body: JSON.stringify(body) });
+
+    let putResp = await putWithScheme("Bearer");
+    if (putResp.status === 401 || putResp.status === 403) {
+      putResp = await putWithScheme("token");
+    }
+
+    if (!putResp.ok) {
+      const err = (await putResp.json()) as { message?: string; documentation_url?: string };
+      const isPermissionsError =
+        putResp.status === 403 &&
+        (err.message ?? "").toLowerCase().includes("resource not accessible by personal access token");
+
+      if (isPermissionsError) {
+        throw new Error(
+          "PUT 403: Token sin permiso para escribir en el repo. " +
+            "Revisa fine-grained PAT en el owner correcto, acceso al repo opos-enfermeria-app y Contents=Read and write. " +
+            "Si cambiaste token, recuerda rebuild/update de la app.",
+        );
+      }
+
+      throw new Error(
+        `PUT ${putResp.status}: ${err.message ?? "Error al guardar archivo"}${
+          err.documentation_url ? ` | ${err.documentation_url}` : ""
+        }`,
+      );
+    }
   }
 }

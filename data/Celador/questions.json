@@ -1587,10 +1587,10 @@
     "id": "Celador_133",
     "question": "Son normas generales para la movilizaci\u00f3n de pacientes:",
     "options": [
-      "Retirar los objetos que nos molesten.",
-      "Dejar acomodado al paciente.",
-      "Evitar movimientos bruscos en la movilizacion del paciente.",
-      "b) y c) son correctas."
+      "",
+      "y c) son correctas.",
+      "",
+      "Retirar los objetos que nos molesten. Dejar acomodado al paciente. Evitar movimientos bruscos en la movilizaci\u00f3n del paciente."
     ],
     "correctIndex": 2,
     "source": "Celador/Preguntas.pdf#133"
@@ -1683,10 +1683,10 @@
     "id": "Celador_141",
     "question": "Se\u00f1ala la respuesta correcta en relaci\u00f3n al transfer fijo:",
     "options": [
-      "El transfer fijo, es en realidad un rolon electrico, con desplazamientos verticales.",
-      "El transfer fijo, es en realidad un rolon electrico, con desplazamientos horizontales.",
-      "a) y b) son correctas.",
-      "a) y b) son incorrectas."
+      "y b) son incorrectas.",
+      "",
+      "",
+      "El transfer fijo, es en realidad un rol\u00f3n el\u00e9ctrico, con desplazamientos verticales. El transfer fijo, es en realidad un rol\u00f3n el\u00e9ctrico, con desplazamientos horizontales."
     ],
     "correctIndex": 2,
     "source": "Celador/Preguntas.pdf#141"
@@ -1743,10 +1743,10 @@
     "id": "Celador_146",
     "question": "Se\u00f1ale la respuesta que NO es correcta en relaci\u00f3n con el microdifusor electrot\u00e9rmico:",
     "options": [
-      "Los tratamientos DVA proporcionan reducciones importantes en los niveles de contaminacion microbiologica de todos los puntos, excepto en los mas alejados o de dificil acceso.",
-      "Es el sistema que permite la desinfeccion total de superficies a traves del aire.",
-      "Es un proceso en el que el aire sirve de vector de transmision del aerosol biocida.",
-      "b) y c) son verdaderas."
+      "",
+      "y c) son verdaderas.",
+      "",
+      "Los tratamientos DVA proporcionan reducciones importantes en los niveles de contaminaci\u00f3n microbiol\u00f3gica de todos los puntos, excepto en los m\u00e1s alejados o de dif\u00edcil acceso. Es el sistema que permite la desinfecci\u00f3n total de superficies a trav\u00e9s del aire. Es un proceso en el que el aire sirve de vector de transmisi\u00f3n del aerosol biocida."
     ],
     "correctIndex": 0,
     "source": "Celador/Preguntas.pdf#146"

@@ -18,7 +18,8 @@ import { QuestionListScreen } from "./src/components/screens/QuestionListScreen"
 import { StatsScreen } from "./src/components/screens/StatsScreen";
 import { DEFAULT_EXAM_QUESTIONS, EMPTY_STATS } from "./src/constants/app";
 import { ProfileId, getProfileById } from "./src/constants/profiles";
-import { getQuestionsForProfile } from "./src/data/questions";
+import { getQuestionsForProfile, loadQuestionsForProfile } from "./src/data/questions";
+import { updateQuestionsForProfile, QUESTIONS_AUTO_UPDATE_INTERVAL_MS } from "./src/utils/remoteQuestions";
 import { ProfileSelectScreen } from "./src/components/screens/ProfileSelectScreen";
 import { styles } from "./src/styles/appStyles";
 import { AppStats, Question, QuestionStat } from "./src/types";
@@ -51,6 +52,7 @@ import {
   saveFontScale,
   getUserProfile,
   saveUserProfile,
+  getLastQuestionsCheckMs,
 } from "./src/utils/storage";
 import { buildRecordedExamSessionStats } from "./src/utils/sessionHistory";
 import { submitCorrectionsToRepo } from "./src/utils/githubCorrections";
@@ -92,6 +94,9 @@ export default function App() {
   const [correctAnswerOverrides, setCorrectAnswerOverrides] = useState<Record<string, number>>({});
   const [stats, setStats] = useState<AppStats>(EMPTY_STATS);
 
+  const [updatingQuestions, setUpdatingQuestions] = useState(false);
+  const [lastQuestionsUpdate, setLastQuestionsUpdate] = useState<number | null>(null);
+
   // Session/runtime state
   const [examCountInput, setExamCountInput] = useState(String(DEFAULT_EXAM_QUESTIONS));
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -132,7 +137,24 @@ export default function App() {
         setCorrectAnswerOverrides(loadedOverrides);
         if (profileId) {
           setUserProfile(profileId);
-          setBaseQuestions(getQuestionsForProfile(profileId));
+          const cachedOrStatic = await loadQuestionsForProfile(profileId);
+          setBaseQuestions(cachedOrStatic);
+
+          // Record last update time for display; also trigger daily auto-check.
+          const lastCheck = await getLastQuestionsCheckMs(profileId);
+          if (lastCheck > 0) setLastQuestionsUpdate(lastCheck);
+          const needsAutoUpdate = Date.now() - lastCheck > QUESTIONS_AUTO_UPDATE_INTERVAL_MS;
+          if (needsAutoUpdate) {
+            // Run in background — do not block startup.
+            void updateQuestionsForProfile(profileId)
+              .then((updated) => {
+                setBaseQuestions(updated);
+                setLastQuestionsUpdate(Date.now());
+              })
+              .catch(() => {
+                // Silent background failure — user can retry manually.
+              });
+          }
         }
       } catch (error) {
         // Keep app usable even if persistence init fails on some devices.
@@ -146,7 +168,35 @@ export default function App() {
   async function handleSelectProfile(profileId: ProfileId) {
     await saveUserProfile(profileId);
     setUserProfile(profileId);
-    setBaseQuestions(getQuestionsForProfile(profileId));
+    // Load cached questions immediately so the UI is responsive.
+    const cachedOrStatic = await loadQuestionsForProfile(profileId);
+    setBaseQuestions(cachedOrStatic);
+    const lastCheck = await getLastQuestionsCheckMs(profileId);
+    if (lastCheck > 0) setLastQuestionsUpdate(lastCheck);
+    // Then fetch fresh questions from the repo in the background.
+    void updateQuestionsForProfile(profileId)
+      .then((updated) => {
+        setBaseQuestions(updated);
+        setLastQuestionsUpdate(Date.now());
+      })
+      .catch(() => {
+        // Silent failure — user can retry from HomeScreen.
+      });
+  }
+
+  async function refreshQuestions() {
+    if (!userProfile || updatingQuestions) return;
+    setUpdatingQuestions(true);
+    try {
+      const updated = await updateQuestionsForProfile(userProfile);
+      setBaseQuestions(updated);
+      setLastQuestionsUpdate(Date.now());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error desconocido";
+      Alert.alert("Error al actualizar", `No se pudieron descargar las preguntas:\n${message}`);
+    } finally {
+      setUpdatingQuestions(false);
+    }
   }
 
   async function updateFontScale(scale: number) {
@@ -505,6 +555,9 @@ export default function App() {
                   onOpenStats={() => navigation.navigate("stats")}
                   onOpenQuestionList={() => navigation.navigate("questionList")}
                   onOpenOptions={() => navigation.navigate("options")}
+                  onRefreshQuestions={() => void refreshQuestions()}
+                  updatingQuestions={updatingQuestions}
+                  lastQuestionsUpdate={lastQuestionsUpdate}
                 />
               </ErrorBoundary>
             )}
@@ -521,6 +574,7 @@ export default function App() {
                   onHardMaxAccuracyChange={setHardMaxAccuracy}
                   onHardMinShownChange={setHardMinShown}
                   currentProfileLabel={getProfileById(userProfile)?.label}
+                  profileId={userProfile ?? undefined}
                   onChangeProfile={() => {
                     goHome(navigation);
                     setUserProfile(null);

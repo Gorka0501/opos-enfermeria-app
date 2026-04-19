@@ -34,7 +34,6 @@ const QUESTION_STATS_KEY = "questionStats";
 const DISABLED_QUESTIONS_KEY = "disabledQuestionIds";
 const FONT_SCALE_KEY = "fontScale";
 const CORRECT_ANSWER_OVERRIDES_KEY = "correctAnswerOverrides";
-const CACHED_QUESTIONS_KEY = "cachedRemoteQuestions";
 const USER_PROFILE_KEY = "userProfile";
 
 const DEFAULT_STATS: AppStats = {
@@ -239,10 +238,13 @@ export async function saveFontScale(scale: number): Promise<void> {
   await storage.setString(FONT_SCALE_KEY, String(safeScale));
 }
 
-// CACHED REMOTE QUESTIONS
-/** Returns last successfully fetched remote questions, or null if not cached. */
-export async function getCachedQuestions(): Promise<Question[] | null> {
-  const raw = await storage.getString(CACHED_QUESTIONS_KEY);
+// CACHED REMOTE QUESTIONS (per data folder)
+const QUESTIONS_FOLDER_CACHE_PREFIX = "cachedQuestionsV2_";
+const LAST_QUESTIONS_CHECK_PREFIX = "lastQuestionsCheckMs_";
+
+/** Returns cached questions for a specific data folder (e.g. "A_B_C1"), or null. */
+export async function getCachedQuestionsForFolder(folder: string): Promise<Question[] | null> {
+  const raw = await storage.getString(QUESTIONS_FOLDER_CACHE_PREFIX + folder);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
@@ -252,9 +254,22 @@ export async function getCachedQuestions(): Promise<Question[] | null> {
   }
 }
 
-/** Saves remote questions as local cache. */
-export async function saveCachedQuestions(questions: Question[]): Promise<void> {
-  await storage.setString(CACHED_QUESTIONS_KEY, JSON.stringify(questions));
+/** Saves fetched questions for a specific data folder. */
+export async function saveCachedQuestionsForFolder(folder: string, questions: Question[]): Promise<void> {
+  await storage.setString(QUESTIONS_FOLDER_CACHE_PREFIX + folder, JSON.stringify(questions));
+}
+
+/** Returns the timestamp (ms) of the last successful question update for a profile. */
+export async function getLastQuestionsCheckMs(profileId: string): Promise<number> {
+  const raw = await storage.getString(LAST_QUESTIONS_CHECK_PREFIX + profileId);
+  if (!raw) return 0;
+  const n = Number(raw);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** Saves the current timestamp as the last successful question update for a profile. */
+export async function saveLastQuestionsCheckMs(profileId: string): Promise<void> {
+  await storage.setString(LAST_QUESTIONS_CHECK_PREFIX + profileId, String(Date.now()));
 }
 
 // USER PROFILE
