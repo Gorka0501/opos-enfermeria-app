@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppStats, Question, QuestionStat } from "../types";
+import { ProfileId } from "../constants/profiles";
 import { buildRecordedExamSessionStats } from "./sessionHistory";
 
 /**
@@ -34,6 +35,7 @@ const DISABLED_QUESTIONS_KEY = "disabledQuestionIds";
 const FONT_SCALE_KEY = "fontScale";
 const CORRECT_ANSWER_OVERRIDES_KEY = "correctAnswerOverrides";
 const CACHED_QUESTIONS_KEY = "cachedRemoteQuestions";
+const USER_PROFILE_KEY = "userProfile";
 
 const DEFAULT_STATS: AppStats = {
   totalAnswered: 0,
@@ -253,4 +255,17 @@ export async function getCachedQuestions(): Promise<Question[] | null> {
 /** Saves remote questions as local cache. */
 export async function saveCachedQuestions(questions: Question[]): Promise<void> {
   await storage.setString(CACHED_QUESTIONS_KEY, JSON.stringify(questions));
+}
+
+// USER PROFILE
+/** Returns the selected oposicion profile, or null if not yet chosen. */
+export async function getUserProfile(): Promise<ProfileId | null> {
+  const raw = await storage.getString(USER_PROFILE_KEY);
+  if (!raw) return null;
+  return raw as ProfileId;
+}
+
+/** Saves the selected oposicion profile. */
+export async function saveUserProfile(profileId: ProfileId): Promise<void> {
+  await storage.setString(USER_PROFILE_KEY, profileId);
 }

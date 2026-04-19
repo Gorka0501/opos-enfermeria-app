@@ -17,7 +17,9 @@ import { CorrectionsScreen } from "./src/components/screens/CorrectionsScreen";
 import { QuestionListScreen } from "./src/components/screens/QuestionListScreen";
 import { StatsScreen } from "./src/components/screens/StatsScreen";
 import { DEFAULT_EXAM_QUESTIONS, EMPTY_STATS } from "./src/constants/app";
-import { QUESTION_POOL } from "./src/data/questions";
+import { ProfileId, getProfileById } from "./src/constants/profiles";
+import { getQuestionsForProfile } from "./src/data/questions";
+import { ProfileSelectScreen } from "./src/components/screens/ProfileSelectScreen";
 import { styles } from "./src/styles/appStyles";
 import { AppStats, Question, QuestionStat } from "./src/types";
 import { pickSemiRandomQuestions, shuffleArray } from "./src/utils/shuffle";
@@ -47,8 +49,8 @@ import {
   saveCorrectAnswerOverrides,
   getFontScale,
   saveFontScale,
-  getCachedQuestions,
-  saveCachedQuestions,
+  getUserProfile,
+  saveUserProfile,
 } from "./src/utils/storage";
 import { buildRecordedExamSessionStats } from "./src/utils/sessionHistory";
 import { submitCorrectionsToRepo } from "./src/utils/githubCorrections";
@@ -67,9 +69,6 @@ type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const QUESTIONS_REMOTE_URL =
-  "https://raw.githubusercontent.com/Gorka0501/opos-enfermeria-app/main/data/questions.json";
-
 /**
  * App root orchestrator.
  *
@@ -84,7 +83,8 @@ export default function App() {
 
   // Persisted datasets
   const [loading, setLoading] = useState(true);
-  const [baseQuestions, setBaseQuestions] = useState<Question[]>(QUESTION_POOL);
+  const [userProfile, setUserProfile] = useState<ProfileId | null>(null);
+  const [baseQuestions, setBaseQuestions] = useState<Question[]>([]);
   const [failedIds, setFailedIds] = useState<string[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [disabledIds, setDisabledIds] = useState<string[]>([]);
@@ -113,7 +113,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [ids, loadedStats, favs, qStats, disIds, loadedFontScale, loadedOverrides, cachedQuestions] = await Promise.all([
+        const [ids, loadedStats, favs, qStats, disIds, loadedFontScale, loadedOverrides, profileId] = await Promise.all([
           getFailedQuestionIds(),
           getStats(),
           getFavoriteQuestionIds(),
@@ -121,7 +121,7 @@ export default function App() {
           getDisabledQuestionIds(),
           getFontScale(),
           getCorrectAnswerOverrides(),
-          getCachedQuestions(),
+          getUserProfile(),
         ]);
         setFailedIds(ids);
         setStats(loadedStats);
@@ -130,29 +130,24 @@ export default function App() {
         setDisabledIds(disIds);
         setFontScale(loadedFontScale);
         setCorrectAnswerOverrides(loadedOverrides);
-        if (cachedQuestions) setBaseQuestions(cachedQuestions);
+        if (profileId) {
+          setUserProfile(profileId);
+          setBaseQuestions(getQuestionsForProfile(profileId));
+        }
       } catch (error) {
         // Keep app usable even if persistence init fails on some devices.
         console.error("Startup hydration failed", error);
       } finally {
         setLoading(false);
       }
-
-      // Background fetch: silently update questions from GitHub if network is available.
-      try {
-        const response = await fetch(QUESTIONS_REMOTE_URL);
-        if (response.ok) {
-          const data = (await response.json()) as Question[];
-          if (Array.isArray(data) && data.length > 0) {
-            setBaseQuestions(data);
-            void saveCachedQuestions(data);
-          }
-        }
-      } catch {
-        // No network — keep using cache or bundled questions.
-      }
     })();
   }, []);
+
+  async function handleSelectProfile(profileId: ProfileId) {
+    await saveUserProfile(profileId);
+    setUserProfile(profileId);
+    setBaseQuestions(getQuestionsForProfile(profileId));
+  }
 
   async function updateFontScale(scale: number) {
     setFontScale(scale);
@@ -163,7 +158,15 @@ export default function App() {
   const score = useMemo(() => calculateScore(questions, answers), [answers, questions]);
   const practiceSelected = currentQuestion ? practiceAnswers[currentQuestion.id] ?? null : null;
   const practiceAnswered = practiceSelected !== null;
-  const correctionCount = Object.keys(correctAnswerOverrides).length;
+  const activeQuestionIdSet = useMemo(() => new Set(baseQuestions.map((q) => q.id)), [baseQuestions]);
+  const activeCorrections = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(correctAnswerOverrides).filter(([questionId]) => activeQuestionIdSet.has(questionId)),
+      ),
+    [correctAnswerOverrides, activeQuestionIdSet],
+  );
+  const correctionCount = Object.keys(activeCorrections).length;
 
   async function persistStats(nextStats: AppStats) {
     // Keep UI state and storage fully synchronized.
@@ -358,7 +361,7 @@ export default function App() {
   }
 
   async function saveQuestionCorrection(questionId: string, optionIndex: number) {
-    const originalQuestion = QUESTION_POOL.find((question) => question.id === questionId);
+    const originalQuestion = baseQuestions.find((question) => question.id === questionId);
     if (!originalQuestion) {
       return;
     }
@@ -386,8 +389,11 @@ export default function App() {
   }
 
   async function resetAllCorrections() {
-    setCorrectAnswerOverrides({});
-    await saveCorrectAnswerOverrides({});
+    const nextOverrides = Object.fromEntries(
+      Object.entries(correctAnswerOverrides).filter(([questionId]) => !activeQuestionIdSet.has(questionId)),
+    );
+    setCorrectAnswerOverrides(nextOverrides);
+    await saveCorrectAnswerOverrides(nextOverrides);
   }
 
   async function answerPractice(optionIndex: number) {
@@ -441,6 +447,17 @@ export default function App() {
           <ActivityIndicator size="large" color="#1b4965" />
           <Text style={styles.info}>Cargando estadisticas...</Text>
         </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (!userProfile) {
+    return (
+      <SafeAreaProvider>
+        <FontScaleContext.Provider value={fontScale}>
+          <StatusBar style="dark" />
+          <ProfileSelectScreen onSelectProfile={(id) => void handleSelectProfile(id)} />
+        </FontScaleContext.Provider>
       </SafeAreaProvider>
     );
   }
@@ -503,6 +520,11 @@ export default function App() {
                   hardMinShown={hardMinShown}
                   onHardMaxAccuracyChange={setHardMaxAccuracy}
                   onHardMinShownChange={setHardMinShown}
+                  currentProfileLabel={getProfileById(userProfile)?.label}
+                  onChangeProfile={() => {
+                    goHome(navigation);
+                    setUserProfile(null);
+                  }}
                 />
               </ErrorBoundary>
             )}
@@ -514,7 +536,7 @@ export default function App() {
                 <CorrectionsScreen
                   questions={questionPool}
                   originalQuestions={baseQuestions}
-                  corrections={correctAnswerOverrides}
+                  corrections={activeCorrections}
                   onSaveCorrection={(questionId, optionIndex) => void saveQuestionCorrection(questionId, optionIndex)}
                   onResetCorrection={(questionId) => void resetQuestionCorrection(questionId)}
                   onResetAllCorrections={() => void resetAllCorrections()}
@@ -522,7 +544,7 @@ export default function App() {
                     const originalIndexById = Object.fromEntries(
                       baseQuestions.map((q) => [q.id, q.correctIndex]),
                     );
-                    await submitCorrectionsToRepo(correctAnswerOverrides, originalIndexById);
+                    await submitCorrectionsToRepo(activeCorrections, originalIndexById);
                   }}
                   onGoHome={() => goHome(navigation)}
                 />

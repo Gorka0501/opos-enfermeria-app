@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MultiSlider from "@ptomasroos/react-native-multi-slider";
 import { AppText as Text } from "../AppText";
 import { Asset } from "expo-asset";
 import { Question, QuestionStat } from "../../types";
@@ -16,10 +17,20 @@ import { styles, theme } from "../../styles/appStyles";
 
 type SortKey = "default" | "timesShown" | "accuracy" | "timesFailed" | "alphabetical";
 type FilterMode = "all" | "enabled" | "disabled" | "never-shown" | "failed" | "favorites" | "hard";
-type GroupMode = "all" | "common" | "specific" | "other";
-type AppearanceRange = "all" | "zero" | "1-5" | "6-15" | "15+";
-type AccuracyRange = "all" | "nodata" | "low" | "mid" | "high";
-const PAGE_SIZE = 50;
+type GroupMode = "all" | "common" | "specific";
+const PAGE_SIZE = 10;
+
+const COMMON_COLLECTIONS = new Set(["A_B_C1", "C2_C3_D_E"]);
+const SPECIFIC_COLLECTIONS = new Set(["Enfermeria", "Tecnico_Superior", "Celador"]);
+const APPEARANCE_SLIDER_MAX = 50;
+
+const COLLECTION_LABELS: Record<string, string> = {
+  A_B_C1: "Común A/B/C1",
+  C2_C3_D_E: "Común C2/C3/D/E",
+  Enfermeria: "Específico Enfermería",
+  Tecnico_Superior: "Específico Técnico Superior",
+  Celador: "Específico Celador",
+};
 
 type QuestionListScreenProps = {
   questions: Question[];
@@ -41,12 +52,16 @@ export function QuestionListScreen({
   onGoHome,
 }: QuestionListScreenProps) {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("default");
   const [sortAsc, setSortAsc] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [groupFilter, setGroupFilter] = useState<GroupMode>("all");
-  const [appearanceFilter, setAppearanceFilter] = useState<AppearanceRange>("all");
-  const [accuracyFilter, setAccuracyFilter] = useState<AccuracyRange>("all");
+  const [appearanceMin, setAppearanceMin] = useState(0);
+  const [appearanceMax, setAppearanceMax] = useState(APPEARANCE_SLIDER_MAX);
+  const [accuracyMin, setAccuracyMin] = useState(0);
+  const [accuracyMax, setAccuracyMax] = useState(100);
+  const [includeNoDataAccuracy, setIncludeNoDataAccuracy] = useState(true);
   const [localDisabled, setLocalDisabled] = useState<Set<string>>(new Set(disabledIds));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,27 +69,53 @@ export function QuestionListScreen({
   const [showAnswers, setShowAnswers] = useState(false);
   const [highlightCorrect, setHighlightCorrect] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
+
+  const positionById = useMemo(() => {
+    return new Map(questions.map((question, idx) => [question.id, idx + 1]));
+  }, [questions]);
+
+  const failedIdSet = useMemo(() => new Set(failedIds), [failedIds]);
+  const favoriteIdSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  function extractCollectionKey(question: Question): string {
+    const sourcePrefix = (question.source ?? "").split("/")[0]?.trim();
+    if (sourcePrefix) return sourcePrefix;
+
+    const fromId = question.id.match(/^(.+)_\d+$/)?.[1];
+    return fromId ?? "";
+  }
+
+  function getIndexedSearchText(question: Question): string {
+    const positionLabel = String(positionById.get(question.id) ?? 0);
+    return [
+      question.question,
+      question.id,
+      formatId(question.id),
+      question.source ?? "",
+      positionLabel,
+    ]
+      .join(" ")
+      .toLowerCase();
+  }
+
+  const indexedSearchById = useMemo(() => {
+    return new Map(questions.map((question) => [question.id, getIndexedSearchText(question)]));
+  }, [questions, positionById]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 120);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // ── derived list ─────────────────────────────────────────────────────────
   const displayList = useMemo(() => {
     let list = [...questions];
 
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter((item) => {
-        const source = (item.source ?? "").toLowerCase();
-        const indexLabel = (item.id + ' ' + formatId(item.id)).toLowerCase();
-        const positionLabel = String(questions.findIndex((question) => question.id === item.id) + 1);
-
-        return (
-          item.question.toLowerCase().includes(q) ||
-          source.includes(q) ||
-          indexLabel.includes(q) ||
-          positionLabel.includes(q)
-        );
-      });
+    const normalizedSearch = debouncedSearch.trim().toLowerCase();
+    if (normalizedSearch) {
+      list = list.filter((item) => (indexedSearchById.get(item.id) ?? "").includes(normalizedSearch));
     }
 
     if (filterMode === "enabled") {
@@ -84,9 +125,9 @@ export function QuestionListScreen({
     } else if (filterMode === "never-shown") {
       list = list.filter((item) => !questionStats[item.id] || questionStats[item.id].timesShown === 0);
     } else if (filterMode === "failed") {
-      list = list.filter((item) => failedIds.includes(item.id));
+      list = list.filter((item) => failedIdSet.has(item.id));
     } else if (filterMode === "favorites") {
-      list = list.filter((item) => favoriteIds.includes(item.id));
+      list = list.filter((item) => favoriteIdSet.has(item.id));
     } else if (filterMode === "hard") {
       list = list.filter((item) => {
         const s = questionStats[item.id];
@@ -98,52 +139,43 @@ export function QuestionListScreen({
       list = list.filter((item) => {
         const group = getQuestionGroup(item);
         if (groupFilter === "common") return group === "common";
-        if (groupFilter === "specific") return group === "specific";
-        return group === "other";
+        return group === "specific";
       });
     }
 
-    if (appearanceFilter !== "all") {
-      list = list.filter((item) => {
-        const shown = questionStats[item.id]?.timesShown ?? 0;
-        if (appearanceFilter === "zero") return shown === 0;
-        if (appearanceFilter === "1-5") return shown >= 1 && shown <= 5;
-        if (appearanceFilter === "6-15") return shown >= 6 && shown <= 15;
-        if (appearanceFilter === "15+") return shown > 15;
-        return true;
-      });
-    }
-
-    if (accuracyFilter !== "all") {
-      list = list.filter((item) => {
-        const stat = questionStats[item.id];
-        if (!stat || stat.timesShown === 0) return accuracyFilter === "nodata";
-        const pct = (stat.timesCorrect / stat.timesShown) * 100;
-        if (accuracyFilter === "low") return pct < 40;
-        if (accuracyFilter === "mid") return pct >= 40 && pct < 75;
-        if (accuracyFilter === "high") return pct >= 75;
-        return false;
-      });
-    }
-
-    list.sort((a, b) => {
-      const sa = questionStats[a.id];
-      const sb = questionStats[b.id];
-      let diff = 0;
-      if (sortKey === "timesShown") diff = (sa?.timesShown ?? 0) - (sb?.timesShown ?? 0);
-      else if (sortKey === "timesFailed") diff = (sa?.timesFailed ?? 0) - (sb?.timesFailed ?? 0);
-      else if (sortKey === "accuracy") {
-        const accA = sa && sa.timesShown > 0 ? sa.timesCorrect / sa.timesShown : -1;
-        const accB = sb && sb.timesShown > 0 ? sb.timesCorrect / sb.timesShown : -1;
-        diff = accA - accB;
-      } else if (sortKey === "alphabetical") {
-        diff = a.question.localeCompare(b.question, "es");
-      }
-      return sortAsc ? diff : -diff;
+    list = list.filter((item) => {
+      const shown = questionStats[item.id]?.timesShown ?? 0;
+      const isInfinityUpperBound = appearanceMax >= APPEARANCE_SLIDER_MAX;
+      return shown >= appearanceMin && (isInfinityUpperBound || shown <= appearanceMax);
     });
 
+    list = list.filter((item) => {
+      const stat = questionStats[item.id];
+      if (!stat || stat.timesShown === 0) return includeNoDataAccuracy;
+      const pct = (stat.timesCorrect / stat.timesShown) * 100;
+      return pct >= accuracyMin && pct <= accuracyMax;
+    });
+
+    if (sortKey !== "default") {
+      list = [...list].sort((a, b) => {
+        const sa = questionStats[a.id];
+        const sb = questionStats[b.id];
+        let diff = 0;
+        if (sortKey === "timesShown") diff = (sa?.timesShown ?? 0) - (sb?.timesShown ?? 0);
+        else if (sortKey === "timesFailed") diff = (sa?.timesFailed ?? 0) - (sb?.timesFailed ?? 0);
+        else if (sortKey === "accuracy") {
+          const accA = sa && sa.timesShown > 0 ? sa.timesCorrect / sa.timesShown : -1;
+          const accB = sb && sb.timesShown > 0 ? sb.timesCorrect / sb.timesShown : -1;
+          diff = accA - accB;
+        } else if (sortKey === "alphabetical") {
+          diff = a.question.localeCompare(b.question, "es");
+        }
+        return sortAsc ? diff : -diff;
+      });
+    }
+
     return list;
-  }, [questions, search, filterMode, groupFilter, sortKey, sortAsc, appearanceFilter, accuracyFilter, localDisabled, questionStats, failedIds, favoriteIds]);
+  }, [questions, debouncedSearch, filterMode, groupFilter, sortKey, sortAsc, appearanceMin, appearanceMax, accuracyMin, accuracyMax, includeNoDataAccuracy, localDisabled, questionStats, failedIdSet, favoriteIdSet, indexedSearchById]);
 
   // ── summary stats ────────────────────────────────────────────────────────
   const totalActive = questions.length - localDisabled.size;
@@ -153,7 +185,7 @@ export function QuestionListScreen({
 
   useEffect(() => {
     setPage(0);
-  }, [search, filterMode, groupFilter, appearanceFilter, accuracyFilter, sortKey, sortAsc]);
+  }, [search, filterMode, groupFilter, appearanceMin, appearanceMax, accuracyMin, accuracyMax, includeNoDataAccuracy, sortKey, sortAsc]);
 
   useEffect(() => {
     if (page > totalPages - 1) {
@@ -206,32 +238,43 @@ export function QuestionListScreen({
     return Math.round((stat.timesCorrect / stat.timesShown) * 100);
   }
 
-  // "C12" → "Común #12", "E34" → "Específico #34"
+  // "A_B_C1_12" -> "Común A/B/C1 #12"
   function formatId(id: string): string {
-    const mc = id.match(/^C(\d+)$/);
-    if (mc) return `Común #${mc[1]}`;
-    const me = id.match(/^E(\d+)$/);
-    if (me) return `Específico #${me[1]}`;
-    return id;
+    const match = id.match(/^(.+?)_(\d+)$/);
+    if (!match) return id;
+    const collection = match[1];
+    const number = match[2];
+    const label = COLLECTION_LABELS[collection] ?? collection;
+    return `${label} #${number}`;
   }
 
   function getQuestionGroup(question: Question): GroupMode {
-    if (/^C/.test(question.id)) return "common";
-    if (/^E/.test(question.id)) return "specific";
-    return "other";
+    const collection = extractCollectionKey(question);
+    if (COMMON_COLLECTIONS.has(collection)) return "common";
+    if (SPECIFIC_COLLECTIONS.has(collection)) return "specific";
+    return "specific";
   }
 
-  // filename → readable label
+  function getCollectionLabel(question: Question): string {
+    const collection = extractCollectionKey(question);
+    return COLLECTION_LABELS[collection] ?? (collection || "Sin grupo");
+  }
+
   function formatSource(src: string): string {
-    if (src.includes("comun")) return "Temario Común – Preguntas";
-    if (src.includes("enfermeria_500") || src.includes("enfermero_500")) return "Temario Enfermería – Preguntas";
-    return src;
+    if (!src) return "Fuente no disponible";
+    const prefix = src.split("/")[0] ?? src;
+    if (prefix in COLLECTION_LABELS) return COLLECTION_LABELS[prefix];
+    return prefix;
   }
 
   function getSourcePdfModule(question: Question): number | null {
-    const src = question.source ?? "";
-    if (src.includes("comun")) return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
-    if (src.includes("enfermeria") || src.includes("enfermero_500")) return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
+    const collection = extractCollectionKey(question);
+    if (collection === "A_B_C1" || collection === "C2_C3_D_E") {
+      return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
+    }
+    if (collection === "Enfermeria") {
+      return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
+    }
     return null;
   }
 
@@ -270,22 +313,6 @@ export function QuestionListScreen({
     { key: "favorites", label: "Favoritas", emoji: "⭐" },
   ];
 
-  const APPEARANCE_FILTERS: { key: AppearanceRange; label: string }[] = [
-    { key: "all", label: "Todas" },
-    { key: "zero", label: "0 veces" },
-    { key: "1-5", label: "1–5" },
-    { key: "6-15", label: "6–15" },
-    { key: "15+", label: "15+" },
-  ];
-
-  const ACCURACY_FILTERS: { key: AccuracyRange; label: string }[] = [
-    { key: "all", label: "Todos" },
-    { key: "nodata", label: "Sin datos" },
-    { key: "low", label: "< 40%" },
-    { key: "mid", label: "40–74%" },
-    { key: "high", label: "≥ 75%" },
-  ];
-
   const SORTS: { key: SortKey; label: string }[] = [
     { key: "default", label: "Original" },
     { key: "timesShown", label: "Apariciones" },
@@ -298,7 +325,6 @@ export function QuestionListScreen({
     { key: "all", label: "Todos" },
     { key: "common", label: "Común" },
     { key: "specific", label: "Específico" },
-    { key: "other", label: "Otros" },
   ];
 
   return (
@@ -325,6 +351,16 @@ export function QuestionListScreen({
 
         {/* ── Controls ── */}
         <View style={styles.card}>
+          <Pressable
+            onPress={() => setFiltersCollapsed((prev) => !prev)}
+            style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: filtersCollapsed ? 0 : 10 }}
+          >
+            <Text style={styles.cardTitle}>Filtros</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#8fa8bc" }}>{filtersCollapsed ? "▸" : "▾"}</Text>
+          </Pressable>
+
+          {!filtersCollapsed && (
+            <>
 
           {/* Search */}
           <TextInput
@@ -392,50 +428,63 @@ export function QuestionListScreen({
 
           {/* Appearance range */}
           <Text style={{ fontSize: 11, fontWeight: "700", color: "#8fa8bc", marginBottom: 5, letterSpacing: 0.5 }}>APARICIONES</Text>
-          <ScrollView horizontal={!isCompact} showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            <View style={{ flexDirection: "row", flexWrap: isCompact ? "wrap" : "nowrap", gap: 6, paddingRight: 8 }}>
-              {APPEARANCE_FILTERS.map((f) => {
-                const active = appearanceFilter === f.key;
-                return (
-                  <Pressable
-                    key={f.key}
-                    onPress={() => setAppearanceFilter(f.key)}
-                    style={{
-                      paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
-                      backgroundColor: active ? "#1b4965" : "#fff",
-                      borderWidth: 1.5, borderColor: active ? "#1b4965" : "#c8dce8",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: active ? "#fff" : "#2c6e8a", fontWeight: "600" }}>{f.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
+          <View style={{ marginBottom: 10 }}>
+            <Text style={[styles.cardDescription, { marginBottom: 4 }]}>Rango: {appearanceMin} a {appearanceMax >= APPEARANCE_SLIDER_MAX ? "∞" : appearanceMax} apariciones</Text>
+            <MultiSlider
+              values={[appearanceMin, appearanceMax]}
+              min={0}
+              max={APPEARANCE_SLIDER_MAX}
+              step={1}
+              onValuesChange={(values) => {
+                setAppearanceMin(Math.round(values[0]));
+                setAppearanceMax(Math.round(values[1]));
+              }}
+              sliderLength={Math.max(220, width - 110)}
+              selectedStyle={{ backgroundColor: theme.primary }}
+              unselectedStyle={{ backgroundColor: "#c8d4e3" }}
+              markerStyle={{ backgroundColor: theme.primaryDark, height: 18, width: 18 }}
+              containerStyle={{ alignSelf: "center", marginTop: 4 }}
+            />
+          </View>
 
           {/* Accuracy range */}
           <Text style={{ fontSize: 11, fontWeight: "700", color: "#8fa8bc", marginBottom: 5, letterSpacing: 0.5 }}>% ACIERTO</Text>
-          <ScrollView horizontal={!isCompact} showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            <View style={{ flexDirection: "row", flexWrap: isCompact ? "wrap" : "nowrap", gap: 6, paddingRight: 8 }}>
-              {ACCURACY_FILTERS.map((f) => {
-                const active = accuracyFilter === f.key;
-                const accentColor = f.key === "high" ? theme.success : f.key === "mid" ? theme.warning : f.key === "low" ? theme.danger : theme.primaryDark;
-                return (
-                  <Pressable
-                    key={f.key}
-                    onPress={() => setAccuracyFilter(f.key)}
-                    style={{
-                      paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
-                      backgroundColor: active ? accentColor : "#fff",
-                      borderWidth: 1.5, borderColor: active ? accentColor : "#c8dce8",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: active ? "#fff" : "#2c6e8a", fontWeight: "600" }}>{f.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
+          <View style={{ marginBottom: 10 }}>
+            <Text style={[styles.cardDescription, { marginBottom: 4 }]}>Rango: {accuracyMin}% a {accuracyMax}%</Text>
+            <MultiSlider
+              values={[accuracyMin, accuracyMax]}
+              min={0}
+              max={100}
+              step={1}
+              onValuesChange={(values) => {
+                setAccuracyMin(values[0]);
+                setAccuracyMax(values[1]);
+              }}
+              sliderLength={Math.max(220, width - 110)}
+              selectedStyle={{ backgroundColor: theme.primary }}
+              unselectedStyle={{ backgroundColor: "#c8d4e3" }}
+              markerStyle={{ backgroundColor: theme.primaryDark, height: 18, width: 18 }}
+              containerStyle={{ alignSelf: "center", marginTop: 4 }}
+            />
+
+            <Pressable
+              onPress={() => setIncludeNoDataAccuracy((prev) => !prev)}
+              style={{
+                marginTop: 8,
+                alignSelf: "flex-start",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1.2,
+                borderColor: includeNoDataAccuracy ? theme.primaryDark : "#c8dce8",
+                backgroundColor: includeNoDataAccuracy ? "#eaf6f4" : "#fff",
+              }}
+            >
+              <Text style={{ fontSize: 12, color: includeNoDataAccuracy ? theme.primaryDark : "#2c6e8a", fontWeight: "700" }}>
+                {includeNoDataAccuracy ? "✅ Incluir sin datos" : "⬜ Incluir sin datos"}
+              </Text>
+            </Pressable>
+          </View>
 
           {/* Sort */}
           <Text style={{ fontSize: 11, fontWeight: "700", color: "#8fa8bc", marginBottom: 5, letterSpacing: 0.5 }}>ORDENAR</Text>
@@ -511,6 +560,8 @@ export function QuestionListScreen({
               </Pressable>
             </View>
           </View>
+          </>
+          )}
 
         </View>
 
@@ -527,8 +578,8 @@ export function QuestionListScreen({
             const stat = questionStats[item.id];
             const acc = getAccPct(stat);
             const isDisabled = localDisabled.has(item.id);
-            const isFav = favoriteIds.includes(item.id);
-            const isFailed = failedIds.includes(item.id);
+            const isFav = favoriteIdSet.has(item.id);
+            const isFailed = failedIdSet.has(item.id);
             const shown = stat?.timesShown ?? 0;
             const correct = stat?.timesCorrect ?? 0;
             const failed = stat?.timesFailed ?? 0;
@@ -645,6 +696,9 @@ export function QuestionListScreen({
                   {/* ID chip */}
                   <View style={{ backgroundColor: "#d8edf8", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
                     <Text style={{ fontSize: 11, color: "#1b4965", fontWeight: "700" }}>{item.id}</Text>
+                  </View>
+                  <View style={{ backgroundColor: "#edf7f6", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 11, color: theme.primaryDark, fontWeight: "700" }}>{getCollectionLabel(item)}</Text>
                   </View>
                   {/* Fuente chip — opens the PDF */}
                   <Pressable

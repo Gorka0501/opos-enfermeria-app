@@ -14,6 +14,8 @@ type OptionsScreenProps = {
   hardMinShown: number;
   onHardMaxAccuracyChange: (v: number) => void;
   onHardMinShownChange: (v: number) => void;
+  currentProfileLabel?: string;
+  onChangeProfile?: () => void;
 };
 
 type PdfItem = {
@@ -50,7 +52,7 @@ const PDFS_NURSING: PdfItem[] = [
 
 const FONT_PRESETS = [0.85, 0.9, 1, 1.15, 1.3, 1.4];
 
-export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, hardMinShown, onHardMaxAccuracyChange, onHardMinShownChange }: OptionsScreenProps) {
+export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, hardMinShown, onHardMaxAccuracyChange, onHardMinShownChange, currentProfileLabel, onChangeProfile }: OptionsScreenProps) {
   const fontScale = useFontScale();
 
   async function openBundledPdf(assetModule: number) {
@@ -80,6 +82,20 @@ export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, ha
         <Text style={styles.subtitle}>
           Aquí centralizamos configuraciones futuras y material de estudio descargable.
         </Text>
+
+        {currentProfileLabel !== undefined && (
+          <View style={[styles.card, { borderWidth: 1, borderColor: theme.border }]}>
+            <Text style={styles.cardTitle}>📋 Categoría de oposición</Text>
+            <Text style={[styles.cardDescription, { marginTop: 4 }]}>
+              Banco activo: <Text style={{ color: theme.primary, fontWeight: "bold" }}>{currentProfileLabel}</Text>
+            </Text>
+            {onChangeProfile && (
+              <Pressable style={[styles.secondaryButton, { marginTop: 10 }]} onPress={onChangeProfile}>
+                <Text style={styles.secondaryButtonText}>🔄 Cambiar categoría</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Tamaño de letra</Text>
