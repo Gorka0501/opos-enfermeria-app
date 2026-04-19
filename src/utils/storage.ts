@@ -211,7 +211,7 @@ export async function getCorrectAnswerOverrides(): Promise<Record<string, number
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return Object.fromEntries(
       Object.entries(parsed).filter(([, value]) => typeof value === "number" && Number.isInteger(value)),
-    );
+    ) as Record<string, number>;
   } catch {
     return {};
   }
