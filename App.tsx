@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import * as Haptics from "expo-haptics";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Text } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
@@ -54,8 +54,8 @@ import {
   saveUserProfile,
   getLastQuestionsCheckMs,
 } from "./src/utils/storage";
-import { buildRecordedExamSessionStats } from "./src/utils/sessionHistory";
-import { submitCorrectionsToRepo } from "./src/utils/githubCorrections";
+import { buildRecordedExamSessionStatsForProfile, getExamHistoryForProfile } from "./src/utils/sessionHistory";
+import { sendCorrectionsByEmail } from "./src/utils/correctionsEmail";
 
 type PracticeMode = "random-list" | "failed-list" | "favorites" | "hard-list";
 type RootStackParamList = {
@@ -96,6 +96,7 @@ export default function App() {
 
   const [updatingQuestions, setUpdatingQuestions] = useState(false);
   const [lastQuestionsUpdate, setLastQuestionsUpdate] = useState<number | null>(null);
+  const activeProfileRef = useRef<ProfileId | null>(null);
 
   // Session/runtime state
   const [examCountInput, setExamCountInput] = useState(String(DEFAULT_EXAM_QUESTIONS));
@@ -166,6 +167,7 @@ export default function App() {
   }, []);
 
   async function handleSelectProfile(profileId: ProfileId) {
+    activeProfileRef.current = profileId;
     await saveUserProfile(profileId);
     setUserProfile(profileId);
     // Load cached questions immediately so the UI is responsive.
@@ -174,10 +176,13 @@ export default function App() {
     const lastCheck = await getLastQuestionsCheckMs(profileId);
     if (lastCheck > 0) setLastQuestionsUpdate(lastCheck);
     // Then fetch fresh questions from the repo in the background.
+    // Guard against a profile change that happens before this resolves.
     void updateQuestionsForProfile(profileId)
       .then((updated) => {
-        setBaseQuestions(updated);
-        setLastQuestionsUpdate(Date.now());
+        if (activeProfileRef.current === profileId) {
+          setBaseQuestions(updated);
+          setLastQuestionsUpdate(Date.now());
+        }
       })
       .catch(() => {
         // Silent failure — user can retry from HomeScreen.
@@ -346,9 +351,10 @@ export default function App() {
     }));
     setAnsweredQuestions((prev) => new Set(prev).add(currentIndex));
     // Question counters are updated immediately for adaptive features.
-    void recordQuestionAnswered(currentQuestion.id, optionIndex === currentQuestion.correctIndex).then(() =>
-      getAllQuestionStats().then(setQuestionStats)
-    );
+    void (async () => {
+      await recordQuestionAnswered(currentQuestion.id, optionIndex === currentQuestion.correctIndex);
+      setQuestionStats(await getAllQuestionStats());
+    })();
   }
 
   async function finishExam(onDone: () => void) {
@@ -361,9 +367,35 @@ export default function App() {
 
     // First update cumulative stats, then append exam session history entry.
     const nextStats = buildExamStats(stats, answeredCount, score);
-    const nextStatsWithSession = buildRecordedExamSessionStats(nextStats, score, questions.length, answeredCount);
+    if (!userProfile) {
+      await persistStats(nextStats);
+      onDone();
+      return;
+    }
+
+    const nextStatsWithSession = buildRecordedExamSessionStatsForProfile(
+      nextStats,
+      userProfile,
+      score,
+      questions.length,
+      questions,
+      answers,
+      answeredCount,
+    );
     await persistStats(nextStatsWithSession);
     onDone();
+  }
+
+  function openExamHistorySession(session: { questions: Question[]; answers: Record<string, number> }) {
+    setQuestions(session.questions);
+    setAnswers(session.answers);
+    setLastExamQuestions(session.questions);
+    setCurrentIndex(0);
+    setAnsweredQuestions(new Set());
+
+    if (navigationRef.isReady()) {
+      navigationRef.navigate("examResult");
+    }
   }
 
   function requestFinishExam(onDone: () => void) {
@@ -514,6 +546,7 @@ export default function App() {
 
   const totalAccuracy = getAccuracy(stats.totalCorrect, stats.totalAnswered);
   const practiceAccuracy = getAccuracy(stats.practiceCorrect, stats.practiceAnswered);
+  const currentProfileExamHistory = getExamHistoryForProfile(stats, userProfile);
 
   return (
     <SafeAreaProvider>
@@ -525,6 +558,7 @@ export default function App() {
             {({ navigation }) => (
               <ErrorBoundary>
                 <HomeScreen
+                  profileLabel={getProfileById(userProfile)?.label ?? ""}
                   totalQuestions={questionPool.length}
                   failedCount={failedIds.length}
                   correctionCount={correctionCount}
@@ -598,7 +632,7 @@ export default function App() {
                     const originalIndexById = Object.fromEntries(
                       baseQuestions.map((q) => [q.id, q.correctIndex]),
                     );
-                    await submitCorrectionsToRepo(activeCorrections, originalIndexById);
+                    await sendCorrectionsByEmail(activeCorrections, originalIndexById, baseQuestions);
                   }}
                   onGoHome={() => goHome(navigation)}
                 />
@@ -615,6 +649,8 @@ export default function App() {
                   practiceAccuracy={practiceAccuracy}
                   questionStats={questionStats}
                   totalQuestions={questionPool.length}
+                  examHistory={currentProfileExamHistory}
+                  onOpenExamSession={openExamHistorySession}
                   onResetAllStats={async () => {
                     setStats(EMPTY_STATS);
                     await saveStats(EMPTY_STATS);
@@ -696,6 +732,7 @@ export default function App() {
                   />
                 ) : (
                   <HomeScreen
+                    profileLabel={getProfileById(userProfile)?.label ?? ""}
                     totalQuestions={questionPool.length}
                     failedCount={failedIds.length}
                     correctionCount={correctionCount}
@@ -753,6 +790,7 @@ export default function App() {
                   />
                 ) : (
                   <HomeScreen
+                    profileLabel={getProfileById(userProfile)?.label ?? ""}
                     totalQuestions={questionPool.length}
                     failedCount={failedIds.length}
                     correctionCount={correctionCount}

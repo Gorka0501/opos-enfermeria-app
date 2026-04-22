@@ -4,7 +4,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText as Text } from "../AppText";
 import { Question } from "../../types";
 import { styles, theme } from "../../styles/appStyles";
-import { isSubmitConfigured } from "../../utils/githubCorrections";
 
 type CorrectionsScreenProps = {
   questions: Question[];
@@ -139,43 +138,30 @@ export function CorrectionsScreen({
               </View>
             ) : (
               <>
-                {!isSubmitConfigured() && (
-                  <View style={[styles.card, { marginBottom: 10 }]}>
-                    <Text style={styles.cardTitle}>Token no configurado</Text>
-                    <Text style={styles.cardDescription}>
-                      Para habilitar "Enviar al desarrollador", define EXPO_PUBLIC_GITHUB_WRITE_TOKEN en .env.
-                    </Text>
-                  </View>
+                <Pressable
+                  style={[
+                    styles.primaryButton,
+                    { marginBottom: 8, backgroundColor: theme.success ?? theme.primary },
+                    submitStatus === "loading" && styles.disabledButton,
+                  ]}
+                  onPress={() => void handleSubmit()}
+                  disabled={submitStatus === "loading"}
+                >
+                  {submitStatus === "loading" ? (
+                    <ActivityIndicator color={theme.surface} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>📨 Enviar correcciones</Text>
+                  )}
+                </Pressable>
+                {submitStatus === "ok" && (
+                  <Text style={[styles.feedbackText, { color: theme.success ?? theme.primary, marginBottom: 8 }]}> 
+                    ✓ Correcciones enviadas correctamente
+                  </Text>
                 )}
-
-                {isSubmitConfigured() && (
-                  <>
-                    <Pressable
-                      style={[
-                        styles.primaryButton,
-                        { marginBottom: 8, backgroundColor: theme.success ?? theme.primary },
-                        submitStatus === "loading" && styles.disabledButton,
-                      ]}
-                      onPress={() => void handleSubmit()}
-                      disabled={submitStatus === "loading"}
-                    >
-                      {submitStatus === "loading" ? (
-                        <ActivityIndicator color={theme.surface} />
-                      ) : (
-                        <Text style={styles.primaryButtonText}>📨 Enviar al desarrollador</Text>
-                      )}
-                    </Pressable>
-                    {submitStatus === "ok" && (
-                      <Text style={[styles.feedbackText, { color: theme.success ?? theme.primary, marginBottom: 8 }]}>
-                        ✓ Correcciones enviadas correctamente
-                      </Text>
-                    )}
-                    {submitStatus === "error" && (
-                      <Text style={[styles.feedbackText, { color: theme.danger ?? theme.textMuted, marginBottom: 8 }]}>
-                        Error: {submitError}
-                      </Text>
-                    )}
-                  </>
+                {submitStatus === "error" && (
+                  <Text style={[styles.feedbackText, { color: theme.danger ?? theme.textMuted, marginBottom: 8 }]}> 
+                    Error: {submitError}
+                  </Text>
                 )}
                 {correctionEntries.map(({ questionId, newIndex, orig }) => (
                   <View key={questionId} style={[styles.card, { marginBottom: 10 }]}>

@@ -21,7 +21,7 @@ export const PROFILES: Profile[] = [
   {
     id: "tecnico_superior",
     label: "Técnico Superior",
-    emoji: "🔬",
+    emoji: "💻",
     description: "Temario común (A, B, C1) + preguntas específicas de Técnico Superior.",
     commonLabel: "Común A, B, C1",
     specificLabel: "Específico Técnico Superior",

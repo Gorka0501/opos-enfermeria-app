@@ -8,4 +8,6 @@ export const EMPTY_STATS: AppStats = {
   examsCompleted: 0,
   practiceAnswered: 0,
   practiceCorrect: 0,
+  sessionHistory: [],
+  examHistoryByProfile: {},
 };

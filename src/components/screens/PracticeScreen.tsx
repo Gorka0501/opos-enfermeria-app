@@ -71,8 +71,11 @@ export function PracticeScreen({
 
   function getSourcePdfModule(): number | null {
     const collection = question.id.match(/^(.+)_\d+$/)?.[1] ?? "";
-    if (collection === "A_B_C1") return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
-    if (collection === "Enfermeria") return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
+    if (collection === "A_B_C1") return require("../../../assets/temario/a_b_c1_preguntas.pdf") as number;
+    if (collection === "Enfermeria") return require("../../../assets/temario/enfermeria_preguntas.pdf") as number;
+    if (collection === "Tecnico_Superior") return require("../../../assets/temario/tecnico_superior_preguntas.pdf") as number;
+    if (collection === "C2_C3_D_E") return require("../../../assets/temario/c2_c3_d_e_preguntas.pdf") as number;
+    if (collection === "Celador") return require("../../../assets/temario/celador_preguntas.pdf") as number;
     return null;
   }
 

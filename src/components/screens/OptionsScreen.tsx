@@ -30,12 +30,12 @@ const PDFS_COMUN_ABC1: PdfItem[] = [
   {
     code: "1.1",
     title: "Temario Común A/B/C1 – Preguntas",
-    module: require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf"),
+    module: require("../../../assets/temario/a_b_c1_preguntas.pdf"),
   },
   {
     code: "1.2",
     title: "Temario Común A/B/C1 – Respuestas",
-    module: require("../../../assets/temario/temario_enfermero_200_g.pdf"),
+    module: require("../../../assets/temario/a_b_c1_respuestas.pdf"),
   },
 ];
 
@@ -43,12 +43,51 @@ const PDFS_ENFERMERIA: PdfItem[] = [
   {
     code: "2.1",
     title: "Temario Enfermería – Preguntas",
-    module: require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf"),
+    module: require("../../../assets/temario/enfermeria_preguntas.pdf"),
   },
   {
     code: "2.2",
     title: "Temario Enfermería – Respuestas",
-    module: require("../../../assets/temario/temario_enfermero_500_c.pdf"),
+    module: require("../../../assets/temario/enfermeria_respuestas.pdf"),
+  },
+];
+
+const PDFS_TECNICO_SUPERIOR: PdfItem[] = [
+  {
+    code: "3.1",
+    title: "Temario Técnico Superior – Preguntas",
+    module: require("../../../assets/temario/tecnico_superior_preguntas.pdf"),
+  },
+  {
+    code: "3.2",
+    title: "Temario Técnico Superior – Respuestas",
+    module: require("../../../assets/temario/tecnico_superior_respuestas.pdf"),
+  },
+];
+
+const PDFS_C2_C3_D_E: PdfItem[] = [
+  {
+    code: "4.1",
+    title: "Temario Común C2/C3/D/E – Preguntas",
+    module: require("../../../assets/temario/c2_c3_d_e_preguntas.pdf"),
+  },
+  {
+    code: "4.2",
+    title: "Temario Común C2/C3/D/E – Respuestas",
+    module: require("../../../assets/temario/c2_c3_d_e_respuestas.pdf"),
+  },
+];
+
+const PDFS_CELADOR: PdfItem[] = [
+  {
+    code: "5.1",
+    title: "Temario Celador/a – Preguntas",
+    module: require("../../../assets/temario/celador_preguntas.pdf"),
+  },
+  {
+    code: "5.2",
+    title: "Temario Celador/a – Respuestas",
+    module: require("../../../assets/temario/celador_respuestas.pdf"),
   },
 ];
 
@@ -226,18 +265,46 @@ export function OptionsScreen({ onGoHome, onFontScaleChange, hardMaxAccuracy, ha
             </>
           )}
 
-          {/* Técnico Superior — sin temario específico todavía */}
+          {/* Técnico Superior específico */}
           {profileId === "tecnico_superior" && (
-            <View style={{ marginTop: 14, padding: 10, backgroundColor: "#f4f9ff", borderRadius: 8, borderWidth: 1, borderColor: "#c8dce8" }}>
-              <Text style={[styles.cardDescription, { color: theme.textMuted }]}>📭 Temario específico de Técnico Superior no disponible aún.</Text>
-            </View>
+            <>
+              <Text style={[styles.cardTitle, { marginTop: 14 }]}>2) Temario Específico Técnico Superior</Text>
+              {PDFS_TECNICO_SUPERIOR.map((pdf) => (
+                <Pressable
+                  key={pdf.code}
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={() => void openBundledPdf(pdf.module)}
+                >
+                  <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
+                </Pressable>
+              ))}
+            </>
           )}
 
-          {/* Celador — sin temario disponible */}
+          {/* Celador */}
           {profileId === "celador" && (
-            <View style={{ marginTop: 8, padding: 10, backgroundColor: "#f4f9ff", borderRadius: 8, borderWidth: 1, borderColor: "#c8dce8" }}>
-              <Text style={[styles.cardDescription, { color: theme.textMuted }]}>📭 Temario en PDF no disponible para Celador/a aún.</Text>
-            </View>
+            <>
+              <Text style={[styles.cardTitle, { marginTop: 2 }]}>1) Temario Común C2/C3/D/E</Text>
+              {PDFS_C2_C3_D_E.map((pdf) => (
+                <Pressable
+                  key={pdf.code}
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={() => void openBundledPdf(pdf.module)}
+                >
+                  <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
+                </Pressable>
+              ))}
+              <Text style={[styles.cardTitle, { marginTop: 14 }]}>2) Temario Específico Celador/a</Text>
+              {PDFS_CELADOR.map((pdf) => (
+                <Pressable
+                  key={pdf.code}
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={() => void openBundledPdf(pdf.module)}
+                >
+                  <Text style={styles.secondaryButtonText}>📄 {pdf.code} {pdf.title}</Text>
+                </Pressable>
+              ))}
+            </>
           )}
         </View>
       </ScrollView>

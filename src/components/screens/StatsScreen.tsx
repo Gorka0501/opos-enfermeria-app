@@ -3,10 +3,8 @@ import { Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText as Text } from "../AppText";
 import Svg, { Circle, G, Line, Polyline, Text as SvgText } from "react-native-svg";
-import { AppStats, QuestionStat, SessionRecord } from "../../types";
+import { AppStats, ProfileExamSessionRecord, QuestionStat } from "../../types";
 import { styles, theme } from "../../styles/appStyles";
-
-const PAGE_SIZE = 5;
 
 type StatsScreenProps = {
   stats: AppStats;
@@ -14,6 +12,8 @@ type StatsScreenProps = {
   practiceAccuracy: string;
   questionStats: Record<string, QuestionStat>;
   totalQuestions: number;
+  examHistory: ProfileExamSessionRecord[];
+  onOpenExamSession: (session: ProfileExamSessionRecord) => void;
   onResetAllStats: () => Promise<void>;
   onGoHome: () => void;
 };
@@ -24,12 +24,14 @@ export function StatsScreen({
   practiceAccuracy,
   questionStats,
   totalQuestions,
+  examHistory,
+  onOpenExamSession,
   onResetAllStats,
   onGoHome,
 }: StatsScreenProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const history: SessionRecord[] = [...(stats.sessionHistory ?? [])].reverse().slice(0, 10);
+  const history = examHistory.slice(0, 5);
   const chartPoints = [...history].reverse().slice(-12);
   const seenCount = Object.values(questionStats).filter((s) => s.timesShown > 0).length;
   const seenPct = totalQuestions > 0 ? Math.round((seenCount / totalQuestions) * 100) : 0;
@@ -250,8 +252,9 @@ export function StatsScreen({
             {historyOpen && (
               <>
                 {history.map((session, idx) => (
-                  <View
+                  <Pressable
                     key={session.date}
+                    onPress={() => onOpenExamSession(session)}
                     style={{
                       marginTop: 10,
                       borderTopWidth: idx === 0 ? 0 : 1,
@@ -276,7 +279,10 @@ export function StatsScreen({
                     <Text style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
                       {session.score} / {session.total} correctas
                     </Text>
-                  </View>
+                    <Text style={{ fontSize: 12, color: theme.primary, marginTop: 3 }}>
+                      Tocar para abrir el resumen
+                    </Text>
+                  </Pressable>
                 ))}
               </>
             )}

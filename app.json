@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "Test Opos Enfermeria",
+    "name": "OPE Preguntas",
     "slug": "test-opos-enfermeria",
     "version": "1.0.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "platforms": [
       "android",
@@ -28,6 +29,7 @@
     },
     "plugins": [
       "expo-sharing"
-    ]
+    ],
+    "owner": "gorka0501"
   }
 }

@@ -12,7 +12,7 @@
 
 - `App.tsx`
   - Orquesta estado global, persistencia y navegacion.
-  - Gestiona seleccion de perfil, actualizacion remota de preguntas y envio de correcciones.
+  - Gestiona seleccion de perfil, actualizacion remota de preguntas y envio de correcciones por correo.
 - `src/components/screens/`
   - Pantallas de UI y flujos de usuario.
 - `src/constants/profiles.ts`
@@ -48,7 +48,7 @@
   - API central de lectura/escritura en AsyncStorage.
 - `src/utils/remoteQuestions.ts`
   - Descarga preguntas desde `raw.githubusercontent.com` por carpeta y guarda en cache.
-- `src/utils/githubCorrections.ts`
-  - Envia sugerencias a `data/{folder}/user-corrections.json` en GitHub, enrutando por prefijo de ID de pregunta.
+- `src/utils/correctionsEmail.ts`
+  - Construye un JSON de correcciones y abre la app de correo con asunto/cuerpo preparados.
 - `src/utils/openPdf.ts`
   - Abre PDFs del temario empaquetado via `expo-sharing` (movil) o `Linking` (web).

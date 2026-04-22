@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppStats, Question, QuestionStat } from "../types";
 import { ProfileId } from "../constants/profiles";
-import { buildRecordedExamSessionStats } from "./sessionHistory";
 
 /**
  * All persisted user progress/state should go through this file to keep
@@ -43,6 +42,7 @@ const DEFAULT_STATS: AppStats = {
   practiceAnswered: 0,
   practiceCorrect: 0,
   sessionHistory: [],
+  examHistoryByProfile: {},
 };
 
 // FAILED QUESTIONS
@@ -117,6 +117,11 @@ export async function getStats(): Promise<AppStats> {
 
   try {
     const parsed = JSON.parse(raw) as Partial<AppStats>;
+    const examHistoryByProfile =
+      parsed.examHistoryByProfile && typeof parsed.examHistoryByProfile === "object"
+        ? parsed.examHistoryByProfile
+        : {};
+
     return {
       totalAnswered: Number(parsed.totalAnswered ?? 0),
       totalCorrect: Number(parsed.totalCorrect ?? 0),
@@ -125,6 +130,7 @@ export async function getStats(): Promise<AppStats> {
       practiceCorrect: Number(parsed.practiceCorrect ?? 0),
       lastExamDate: parsed.lastExamDate,
       sessionHistory: Array.isArray(parsed.sessionHistory) ? parsed.sessionHistory : [],
+      examHistoryByProfile,
     };
   } catch {
     return DEFAULT_STATS;
@@ -134,16 +140,6 @@ export async function getStats(): Promise<AppStats> {
 /** Saves full stats payload. */
 export async function saveStats(stats: AppStats): Promise<void> {
   await storage.setString(STATS_KEY, JSON.stringify(stats));
-}
-
-/**
- * Appends one exam session to history while preserving previous global stats.
- * Kept for compatibility with any legacy callers.
- */
-export async function recordExamSession(score: number, total: number, answeredCount?: number): Promise<void> {
-  const stats = await getStats();
-  const updated = buildRecordedExamSessionStats(stats, score, total, answeredCount);
-  await saveStats(updated);
 }
 
 // QUESTION STATS (per-question counters)

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -61,10 +61,7 @@ export function QuestionListScreen({
   const [appearanceMax, setAppearanceMax] = useState(APPEARANCE_SLIDER_MAX);
   const [accuracyMin, setAccuracyMin] = useState(0);
   const [accuracyMax, setAccuracyMax] = useState(100);
-  const [includeNoDataAccuracy, setIncludeNoDataAccuracy] = useState(true);
   const [localDisabled, setLocalDisabled] = useState<Set<string>>(new Set(disabledIds));
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(0);
   const [showAnswers, setShowAnswers] = useState(false);
   const [highlightCorrect, setHighlightCorrect] = useState(true);
@@ -109,51 +106,42 @@ export function QuestionListScreen({
     return () => clearTimeout(t);
   }, [search]);
 
-  // ── derived list ─────────────────────────────────────────────────────────
+  // -- derived list ---------------------------------------------------------
   const displayList = useMemo(() => {
-    let list = [...questions];
-
     const normalizedSearch = debouncedSearch.trim().toLowerCase();
-    if (normalizedSearch) {
-      list = list.filter((item) => (indexedSearchById.get(item.id) ?? "").includes(normalizedSearch));
-    }
+    const isInfinityUpperBound = appearanceMax >= APPEARANCE_SLIDER_MAX;
 
-    if (filterMode === "enabled") {
-      list = list.filter((item) => !localDisabled.has(item.id));
-    } else if (filterMode === "disabled") {
-      list = list.filter((item) => localDisabled.has(item.id));
-    } else if (filterMode === "never-shown") {
-      list = list.filter((item) => !questionStats[item.id] || questionStats[item.id].timesShown === 0);
-    } else if (filterMode === "failed") {
-      list = list.filter((item) => failedIdSet.has(item.id));
-    } else if (filterMode === "favorites") {
-      list = list.filter((item) => favoriteIdSet.has(item.id));
-    } else if (filterMode === "hard") {
-      list = list.filter((item) => {
+    // Single-pass filter combining all conditions to avoid intermediate arrays.
+    let list = questions.filter((item) => {
+      // Search
+      if (normalizedSearch && !(indexedSearchById.get(item.id) ?? "").includes(normalizedSearch)) return false;
+      // Filter mode
+      if (filterMode === "enabled" && localDisabled.has(item.id)) return false;
+      else if (filterMode === "disabled" && !localDisabled.has(item.id)) return false;
+      else if (filterMode === "never-shown") {
+        if ((questionStats[item.id]?.timesShown ?? 0) > 0) return false;
+      } else if (filterMode === "failed" && !failedIdSet.has(item.id)) return false;
+      else if (filterMode === "favorites" && !favoriteIdSet.has(item.id)) return false;
+      else if (filterMode === "hard") {
         const s = questionStats[item.id];
-        return s && s.timesShown >= 2 && s.timesCorrect / s.timesShown < 0.5;
-      });
-    }
-
-    if (groupFilter !== "all") {
-      list = list.filter((item) => {
+        if (!s || s.timesShown < 2 || s.timesCorrect / s.timesShown >= 0.5) return false;
+      }
+      // Group filter
+      if (groupFilter !== "all") {
         const group = getQuestionGroup(item);
-        if (groupFilter === "common") return group === "common";
-        return group === "specific";
-      });
-    }
-
-    list = list.filter((item) => {
+        if (groupFilter === "common" && group !== "common") return false;
+        if (groupFilter === "specific" && group !== "specific") return false;
+      }
+      // Appearance filter
       const shown = questionStats[item.id]?.timesShown ?? 0;
-      const isInfinityUpperBound = appearanceMax >= APPEARANCE_SLIDER_MAX;
-      return shown >= appearanceMin && (isInfinityUpperBound || shown <= appearanceMax);
-    });
-
-    list = list.filter((item) => {
+      if (shown < appearanceMin || (!isInfinityUpperBound && shown > appearanceMax)) return false;
+      // Accuracy filter (questions with no data are always included)
       const stat = questionStats[item.id];
-      if (!stat || stat.timesShown === 0) return includeNoDataAccuracy;
-      const pct = (stat.timesCorrect / stat.timesShown) * 100;
-      return pct >= accuracyMin && pct <= accuracyMax;
+      if (stat && stat.timesShown > 0) {
+        const pct = (stat.timesCorrect / stat.timesShown) * 100;
+        if (pct < accuracyMin || pct > accuracyMax) return false;
+      }
+      return true;
     });
 
     if (sortKey !== "default") {
@@ -175,9 +163,9 @@ export function QuestionListScreen({
     }
 
     return list;
-  }, [questions, debouncedSearch, filterMode, groupFilter, sortKey, sortAsc, appearanceMin, appearanceMax, accuracyMin, accuracyMax, includeNoDataAccuracy, localDisabled, questionStats, failedIdSet, favoriteIdSet, indexedSearchById]);
+  }, [questions, debouncedSearch, filterMode, groupFilter, sortKey, sortAsc, appearanceMin, appearanceMax, accuracyMin, accuracyMax, localDisabled, questionStats, failedIdSet, favoriteIdSet, indexedSearchById]);
 
-  // ── summary stats ────────────────────────────────────────────────────────
+  // -- summary stats --------------------------------------------------------
   const totalActive = questions.length - localDisabled.size;
   const totalSeen = questions.filter((q) => (questionStats[q.id]?.timesShown ?? 0) > 0).length;
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE));
@@ -185,7 +173,7 @@ export function QuestionListScreen({
 
   useEffect(() => {
     setPage(0);
-  }, [search, filterMode, groupFilter, appearanceMin, appearanceMax, accuracyMin, accuracyMax, includeNoDataAccuracy, sortKey, sortAsc]);
+  }, [search, filterMode, groupFilter, appearanceMin, appearanceMax, accuracyMin, accuracyMax, sortKey, sortAsc]);
 
   useEffect(() => {
     if (page > totalPages - 1) {
@@ -193,25 +181,40 @@ export function QuestionListScreen({
     }
   }, [page, totalPages]);
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  // -- helpers --------------------------------------------------------------
   function toggle(id: string) {
     setLocalDisabled((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      void onSaveDisabled(Array.from(next));
       return next;
     });
-    setDirty(true);
   }
 
-  function enableAll() { setLocalDisabled(new Set()); setDirty(true); }
-  function disableAll() { setLocalDisabled(new Set(questions.map((q) => q.id))); setDirty(true); }
+  function enableAll() {
+    setLocalDisabled(new Set());
+    void onSaveDisabled([]);
+  }
+  function disableAll() {
+    const all = questions.map((q) => q.id);
+    setLocalDisabled(new Set(all));
+    void onSaveDisabled(all);
+  }
   function enableFiltered() {
-    setLocalDisabled((prev) => { const next = new Set(prev); displayList.forEach((q) => next.delete(q.id)); return next; });
-    setDirty(true);
+    setLocalDisabled((prev) => {
+      const next = new Set(prev);
+      displayList.forEach((q) => next.delete(q.id));
+      void onSaveDisabled(Array.from(next));
+      return next;
+    });
   }
   function disableFiltered() {
-    setLocalDisabled((prev) => { const next = new Set(prev); displayList.forEach((q) => next.add(q.id)); return next; });
-    setDirty(true);
+    setLocalDisabled((prev) => {
+      const next = new Set(prev);
+      displayList.forEach((q) => next.add(q.id));
+      void onSaveDisabled(Array.from(next));
+      return next;
+    });
   }
 
   function toggleExpanded(id: string) {
@@ -224,13 +227,6 @@ export function QuestionListScreen({
       }
       return next;
     });
-  }
-
-  async function saveChanges() {
-    setSaving(true);
-    await onSaveDisabled(Array.from(localDisabled));
-    setSaving(false);
-    setDirty(false);
   }
 
   function getAccPct(stat: QuestionStat | undefined): number | null {
@@ -269,12 +265,11 @@ export function QuestionListScreen({
 
   function getSourcePdfModule(question: Question): number | null {
     const collection = extractCollectionKey(question);
-    if (collection === "A_B_C1" || collection === "C2_C3_D_E") {
-      return require("../../../assets/temario/temario_comun_200_preguntas_cas.pdf") as number;
-    }
-    if (collection === "Enfermeria") {
-      return require("../../../assets/temario/temario_enfermeria_500_preguntas_cas.pdf") as number;
-    }
+    if (collection === "A_B_C1") return require("../../../assets/temario/a_b_c1_preguntas.pdf") as number;
+    if (collection === "C2_C3_D_E") return require("../../../assets/temario/c2_c3_d_e_preguntas.pdf") as number;
+    if (collection === "Enfermeria") return require("../../../assets/temario/enfermeria_preguntas.pdf") as number;
+    if (collection === "Tecnico_Superior") return require("../../../assets/temario/tecnico_superior_preguntas.pdf") as number;
+    if (collection === "Celador") return require("../../../assets/temario/celador_preguntas.pdf") as number;
     return null;
   }
 
@@ -305,7 +300,7 @@ export function QuestionListScreen({
 
   const FILTERS: { key: FilterMode; label: string; emoji: string }[] = [
     { key: "all", label: "Todas", emoji: "📋" },
-    { key: "enabled", label: "Activas", emoji: "✅" },
+    { key: "enabled", label: "Incluidas", emoji: "✅" },
     { key: "disabled", label: "Excluidas", emoji: "🚫" },
     { key: "never-shown", label: "Sin ver", emoji: "👁" },
     { key: "failed", label: "Falladas", emoji: "❌" },
@@ -318,7 +313,7 @@ export function QuestionListScreen({
     { key: "timesShown", label: "Apariciones" },
     { key: "timesFailed", label: "Fallos" },
     { key: "accuracy", label: "Acierto %" },
-    { key: "alphabetical", label: "A–Z" },
+    { key: "alphabetical", label: "A-Z" },
   ];
 
   const GROUP_FILTERS: { key: GroupMode; label: string }[] = [
@@ -343,20 +338,20 @@ export function QuestionListScreen({
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Resumen del banco</Text>
-          <Text style={styles.cardNumber}>{totalActive} activas</Text>
+          <Text style={styles.cardNumber}>{totalActive} incluidas</Text>
           <Text style={styles.cardDescription}>
-            Total: {questions.length} · Excluidas: {localDisabled.size} · Vistas: {totalSeen} · Falladas: {failedIds.length}
+            Total: {questions.length} • Incluidas: {totalActive} • Excluidas: {localDisabled.size} • Vistas: {totalSeen} • Falladas: {failedIds.length}
           </Text>
         </View>
 
-        {/* ── Controls ── */}
+        {/* -- Controls -- */}
         <View style={styles.card}>
           <Pressable
             onPress={() => setFiltersCollapsed((prev) => !prev)}
             style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: filtersCollapsed ? 0 : 10 }}
           >
             <Text style={styles.cardTitle}>Filtros</Text>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#8fa8bc" }}>{filtersCollapsed ? "▸" : "▾"}</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#8fa8bc" }}>{filtersCollapsed ? "▾" : "▴"}</Text>
           </Pressable>
 
           {!filtersCollapsed && (
@@ -369,7 +364,7 @@ export function QuestionListScreen({
               marginBottom: 10,
               marginTop: 0,
             }}
-            placeholder="🔍 Buscar pregunta..."
+            placeholder="🔎 Buscar pregunta..."
             placeholderTextColor={theme.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -466,24 +461,6 @@ export function QuestionListScreen({
               markerStyle={{ backgroundColor: theme.primaryDark, height: 18, width: 18 }}
               containerStyle={{ alignSelf: "center", marginTop: 4 }}
             />
-
-            <Pressable
-              onPress={() => setIncludeNoDataAccuracy((prev) => !prev)}
-              style={{
-                marginTop: 8,
-                alignSelf: "flex-start",
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
-                borderWidth: 1.2,
-                borderColor: includeNoDataAccuracy ? theme.primaryDark : "#c8dce8",
-                backgroundColor: includeNoDataAccuracy ? "#eaf6f4" : "#fff",
-              }}
-            >
-              <Text style={{ fontSize: 12, color: includeNoDataAccuracy ? theme.primaryDark : "#2c6e8a", fontWeight: "700" }}>
-                {includeNoDataAccuracy ? "✅ Incluir sin datos" : "⬜ Incluir sin datos"}
-              </Text>
-            </Pressable>
           </View>
 
           {/* Sort */}
@@ -515,15 +492,19 @@ export function QuestionListScreen({
           <View style={{ marginBottom: 8 }}>
             <ScrollView horizontal={!isCompact} showsHorizontalScrollIndicator={false}>
               <View style={{ flexDirection: "row", flexWrap: isCompact ? "wrap" : "nowrap", gap: 6 }}>
-                <BulkBtn label="✓ Todo" color={theme.success} onPress={enableAll} />
-                <BulkBtn label="✗ Todo" color={theme.danger} onPress={disableAll} />
-                <BulkBtn label={`✓ Filtradas (${displayList.length})`} color={theme.primary} onPress={enableFiltered} />
-                <BulkBtn label={`✗ Filtradas (${displayList.length})`} color={theme.warning} onPress={disableFiltered} />
+                <BulkBtn label="✅ Incluir todas" color={theme.success} onPress={enableAll} />
+                <BulkBtn label="🚫 Excluir todas" color={theme.danger} onPress={disableAll} />
+                <BulkBtn label={`✅ Incluir filtradas (${displayList.length})`} color={theme.primary} onPress={enableFiltered} />
+                <BulkBtn label={`🚫 Excluir filtradas (${displayList.length})`} color={theme.warning} onPress={disableFiltered} />
               </View>
             </ScrollView>
 
+            <Text style={{ fontSize: 12, color: "#6b879b", marginTop: 6 }}>
+              Incluidas = aparecen en examen y práctica. Excluidas = no aparecen.
+            </Text>
+
             <Text style={{ fontSize: 13, color: "#57788f", fontWeight: "600", marginTop: 8 }}>
-              {displayList.length} pregunta{displayList.length !== 1 ? "s" : ""} · Página {page + 1}/{totalPages}
+              {displayList.length} pregunta{displayList.length !== 1 ? "s" : ""} • Página {page + 1}/{totalPages}
             </Text>
 
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
@@ -565,7 +546,7 @@ export function QuestionListScreen({
 
         </View>
 
-        {/* ── Question list ── */}
+        {/* -- Question list -- */}
         <View>
           {displayList.length === 0 && (
             <View style={{ alignItems: "center", marginTop: 20 }}>
@@ -612,7 +593,7 @@ export function QuestionListScreen({
                     backgroundColor: isDisabled ? "#f0e6e6" : "#e6f6f0",
                   }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: isDisabled ? "#c0392b" : "#1a7a4a" }}>
-                      {isDisabled ? "EXCLUIDA" : "ACTIVA"}
+                      {isDisabled ? "EXCLUIDA" : "INCLUIDA"}
                     </Text>
                   </View>
                   {isFav && <Text style={{ fontSize: 13 }}>⭐</Text>}
@@ -634,7 +615,7 @@ export function QuestionListScreen({
                       }}
                     >
                       <Text style={{ fontSize: 11, fontWeight: "700", color: isDisabled ? "#1a7a4a" : "#c0392b" }}>
-                        {isDisabled ? "Activar" : "Excluir"}
+                        {isDisabled ? "Incluir" : "Excluir"}
                       </Text>
                     </Pressable>
                   </View>
@@ -755,24 +736,12 @@ export function QuestionListScreen({
           )}
         </View>
 
-        {dirty && (
-          <Pressable
-            style={{ backgroundColor: saving ? "#8fa8bc" : theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
-            onPress={saveChanges}
-            disabled={saving}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-              {saving ? "Guardando..." : `💾 Guardar cambios (${localDisabled.size} excluidas)`}
-            </Text>
-          </Pressable>
-        )}
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// -- Sub-components ------------------------------------------------------------
 
 function StatChip({ icon, value, label, color }: { icon: string; value: number | string; label: string; color: string }) {
   return (

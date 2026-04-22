@@ -36,22 +36,21 @@ npm run build:aab   # AAB para Google Play
 ## Checklist antes de push
 
 1. Verificar que `.env` no este trackeado (`git status`).
-2. Verificar que `.env.example` no contiene el token real.
+2. Verificar que `.env.example` no contiene valores reales.
 3. Ejecutar pruebas (`npm test`).
 4. Revisar `git diff` para detectar cambios no intencionados.
 
 ## Troubleshooting rapido
 
-### Error: Token no configurado
+### Error al enviar correcciones por correo
 
-- Confirmar `.env` con `EXPO_PUBLIC_GITHUB_WRITE_TOKEN=<token>`.
+- Comprobar que exista una app de correo instalada y configurada.
+- Si quieres destinatario fijo, definir `.env` con `EXPO_PUBLIC_CORRECTIONS_EMAIL=<correo>`.
 - Reiniciar Metro con cache limpia: `npx expo start -c`.
-- Si es APK instalada, generar nuevo build con el token correcto.
 
 ### Push bloqueado por secretos (GH013)
 
 - Eliminar secretos del commit y del historial pendiente.
-- Rotar token comprometido en GitHub Settings → Developer settings.
 - Reintentar push con commit limpio.
 
 ### Preguntas no se actualizan

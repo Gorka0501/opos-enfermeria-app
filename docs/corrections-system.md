@@ -6,7 +6,7 @@ Permitir:
 
 1. Correccion local inmediata por usuario.
 2. Envio de sugerencias para revision del desarrollador.
-3. Agregacion de consenso por pregunta.
+3. Flujo simple de envio sin secretos en cliente.
 
 ## Correccion local en app
 
@@ -14,62 +14,40 @@ Permitir:
 - El cambio se guarda localmente en `correctAnswerOverrides`.
 - El cambio no modifica los archivos de preguntas directamente.
 
-## Envio de sugerencias a GitHub
+## Envio de sugerencias por correo
 
-Implementado en `src/utils/githubCorrections.ts`.
+Implementado en `src/utils/correctionsEmail.ts`.
 
 ### Configuracion
 
 Archivo local `.env`:
 
 ```dotenv
-EXPO_PUBLIC_GITHUB_WRITE_TOKEN=TU_TOKEN
+EXPO_PUBLIC_CORRECTIONS_EMAIL=tu-correo@dominio.com
 ```
 
 Notas:
 
 - `.env` no se versiona (esta en `.gitignore`).
-- `.env.example` debe estar vacio (solo la clave sin valor).
+- Si no se configura email por defecto, el usuario puede completarlo al abrir su app de correo.
 - `EXPO_PUBLIC_` se inyecta en build/runtime de Expo.
 
-### Enrutado de correcciones por carpeta
+### Formato de datos enviado
 
-Cada correccion se envia al archivo de su carpeta segun el prefijo del ID de pregunta:
+Cada envio incluye un JSON con:
 
-| Prefijo de ID | Archivo destino |
-|---|---|
-| `A_B_C1_*` | `data/A_B_C1/user-corrections.json` |
-| `C2_C3_D_E_*` | `data/C2_C3_D_E/user-corrections.json` |
-| `Celador_*` | `data/Celador/user-corrections.json` |
-| `Enfermeria_*` | `data/Enfermeria/user-corrections.json` |
-| `Tecnico_Superior_*` | `data/Tecnico_Superior/user-corrections.json` |
+- `generatedAt` (fecha ISO).
+- `total` (numero de correcciones).
+- `corrections[]` con `questionId`, `originalIndex`, `suggestedIndex` y `source` opcional.
 
-Si un envio incluye correcciones de varias carpetas, se hacen peticiones GET+PUT separadas por cada carpeta.
+### Proceso operativo recomendado
 
-### Estructura del archivo remoto
+1. Usuario corrige preguntas en la app.
+2. Usuario pulsa "Enviar por correo".
+3. Se abre la app de email con asunto y cuerpo ya preparados.
+4. El desarrollador recibe el JSON y decide como integrarlo en el banco de preguntas.
 
-```json
-{
-  "version": 2,
-  "byQuestion": {
-    "Enfermeria_42": {
-      "originalIndex": 1,
-      "suggestions": [
-        {
-          "date": "2026-04-08T12:00:00.000Z",
-          "submitterId": "device-abc123",
-          "originalIndex": 1,
-          "suggestedIndex": 3
-        }
-      ]
-    }
-  }
-}
-```
+## Seguridad
 
-## Regla de autocorreccion por consenso
-
-- Umbral: 10 usuarios distintos por pregunta.
-- Cada usuario cuenta un voto por pregunta (se conserva el mas reciente).
-- Al superar el umbral, se calcula mayoria y se guarda `autoCorrection`.
-- En empate, se elige el indice menor para comportamiento determinista.
+- No se usan tokens de GitHub dentro de la app para enviar correcciones.
+- El envio depende de la app de correo instalada en el dispositivo.
