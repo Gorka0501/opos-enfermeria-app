@@ -1,8 +1,8 @@
 import { ProfileId } from "../constants/profiles";
 import { AppStats, ProfileExamSessionRecord, Question, SessionRecord } from "../types";
 
-const MAX_GLOBAL_EXAM_HISTORY = 50;
-const MAX_PROFILE_EXAM_HISTORY = 5;
+const MAX_GLOBAL_EXAM_HISTORY = 100;
+const MAX_PROFILE_EXAM_HISTORY = 100;
 
 /**
  * Appends one exam session record to stats.sessionHistory.
@@ -60,7 +60,7 @@ export function getExamHistoryForProfile(
 }
 
 /**
- * Appends one exam session to profile history, keeping only the latest 5 entries.
+ * Appends one exam session to profile history, keeping only the latest 100 entries.
  *
  * Also keeps legacy sessionHistory updated for backward compatible analytics.
  */

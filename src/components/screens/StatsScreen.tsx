@@ -32,7 +32,7 @@ export function StatsScreen({
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const history = examHistory.slice(0, 5);
-  const chartPoints = [...history].reverse().slice(-12);
+  const chartPoints = [...examHistory].reverse().slice(-100);
   const seenCount = Object.values(questionStats).filter((s) => s.timesShown > 0).length;
   const seenPct = totalQuestions > 0 ? Math.round((seenCount / totalQuestions) * 100) : 0;
 
@@ -111,7 +111,7 @@ export function StatsScreen({
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Tendencia de acierto en exámenes</Text>
           <Text style={[styles.cardDescription, { marginTop: 4 }]}>
-            Últimos {chartPoints.length} exámenes. Cada punto representa un examen.
+            {chartPoints.length} exámenes totales. Cada punto representa un examen.
           </Text>
 
           {chartPoints.length < 2 ? (
